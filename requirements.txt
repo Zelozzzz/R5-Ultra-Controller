@@ -1,0 +1,4 @@
+hidapi>=0.14
+intelhex>=2.3
+pystray>=0.19
+Pillow>=10.0

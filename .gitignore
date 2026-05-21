@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local config — written by the app at runtime
+r5_config.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows junk
+Thumbs.db
+desktop.ini
+
+# Local virtualenvs
+.venv/
+venv/
+env/
+
+# Build artifacts
+dist/
+build/
+*.spec
