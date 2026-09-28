@@ -61,6 +61,7 @@ LIFT_OFF_DISTANCES = {"0.7 mm": 0.7, "1 mm": 1.0, "2 mm": 2.0}
 R5_UNSUPPORTED = ("hyper mode", "DPI indicator", "separate X/Y DPI")
 
 SLEEP_NEVER = 65535  # set_sleep_time value that keeps the LED awake
+SLEEP_CHOICES = (1, 2, 5, 10, 30, 0)   # minutes before the mouse sleeps; 0 = never
 
 RGB = tuple[int, int, int]
 
@@ -221,6 +222,21 @@ def tracking_mode(profile: int, mode: int) -> bytes:
     return _simple_setting(profile, 19, mode)
 
 
+def angle_snap(profile: int, on: bool) -> bytes:
+    """setAngleSnap: straightens movement. Off for aiming."""
+    return _simple_setting(profile, 4, 1 if on else 0)
+
+
+def active_profile(profile: int) -> bytes:
+    """setProfileID: which onboard profile (1..3) the mouse runs."""
+    return bytes(_packet(1, 0, 5, profile))
+
+
+def get_active_profile() -> bytes:
+    """getProfileID; the answer is at resp[7]."""
+    return bytes(_packet(1, 0, 0x85, 0))
+
+
 def active_dpi_stage(profile: int, stage: int) -> bytes:
     """setActiveDPI (stage 1..6). Also re-triggers the LED indicator flash."""
     return _simple_setting(profile, 2, stage)
@@ -360,7 +376,7 @@ READABLE = {
     "polling": (1, 0x00, 2), "active_stage": (1, 0x02, 2), "lod": (1, 0x08, 2),
     "motion_sync": (1, 0x09, 2), "ripple": (1, 0x0A, 2), "hyper": (1, 0x0B, 2),
     "debounce": (0, 0x08, 2), "indicator": (2, 0x04, 2), "brightness": (2, 0x02, 3),
-    "sleep": (0, 0x07, 3), "competitive": (1, 0x13, 2),
+    "sleep": (0, 0x07, 3), "competitive": (1, 0x13, 2), "angle_snap": (1, 0x04, 2),
 }
 # Reply byte holding the value, where it isn't the usual resp[8].
 VALUE_OFFSET = {"brightness": 9}   # the official GetLightness reads s[9]

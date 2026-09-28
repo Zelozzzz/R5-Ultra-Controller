@@ -37,8 +37,13 @@ def profile_document(name: str, settings: dict) -> dict:
     for key in ("motion_sync", "ripple", "always_on"):
         if type(settings[key]) is not bool:
             raise ValueError(f"{key} must be on or off.")
-    return {"format": "dorsal-profile", "version": 1, "name": name.strip(),
-            "settings": {key: copy.deepcopy(settings[key]) for key in PROFILE_FIELDS}}
+    kept = {key: copy.deepcopy(settings[key]) for key in PROFILE_FIELDS}
+    # added later, so older profiles don't have them
+    if settings.get("sleep_min") in protocol.SLEEP_CHOICES:
+        kept["sleep_min"] = settings["sleep_min"]
+    if type(settings.get("angle_snap")) is bool:
+        kept["angle_snap"] = settings["angle_snap"]
+    return {"format": "dorsal-profile", "version": 1, "name": name.strip(), "settings": kept}
 
 
 def read_profile(path: Path) -> dict:

@@ -7,7 +7,7 @@ Produces, in dist/:
     Dorsal/                          the app folder: Dorsal.exe, dorsal-cli.exe, _internal/
     Dorsal-<version>-portable.zip    that folder, zipped (no install needed)
 
-The installer (Dorsal-Setup-<version>.exe) is then built from dist/Dorsal by
+The installer (Dorsal-Setup.exe) is then built from dist/Dorsal by
 Inno Setup using packaging/installer.iss; GitHub Actions does both on every
 release tag (see .github/workflows/release.yml).
 """

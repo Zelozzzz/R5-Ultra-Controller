@@ -38,9 +38,7 @@ def _hid():
 WIRED_PID, DONGLE_PID = p.R5_PIDS
 
 
-def find_device() -> tuple[bytes, int] | None:
-    """(path, product id) of the vendor HID interface (usage page 0xFFFF,
-    usage 0), or None. The wired connection is preferred when both exist."""
+def _search_device() -> tuple[bytes, int] | None:
     hid = _hid()
     for pid in p.R5_PIDS:
         for info in hid.enumerate(p.R5_VID, pid):
@@ -49,13 +47,55 @@ def find_device() -> tuple[bytes, int] | None:
     return None
 
 
+_found_cache: tuple[frozenset[str], tuple[bytes, int] | None] | None = None
+
+
+def find_device() -> tuple[bytes, int] | None:
+    """(path, product id) of the vendor HID interface (usage page 0xFFFF,
+    usage 0), or None. The wired connection is preferred when both exist.
+    The search takes ~100 ms and every open() needs it, so the answer is
+    reused until the mouse's entries in Windows' device list change."""
+    global _found_cache
+    paths = _hid_interface_paths()
+    if paths is not None and _found_cache is not None and _found_cache[0] == paths:
+        return _found_cache[1]
+    found = None if paths is not None and not paths else _search_device()
+    _found_cache = None if paths is None else (paths, found)
+    return found
+
+
 def find_device_path() -> bytes | None:
     found = find_device()
     return found[0] if found else None
 
 
+def _hid_interface_paths() -> frozenset[str] | None:
+    """The R5's HID interface names, straight from Windows' device list.
+    ~0.2 ms, and nothing gets opened, unlike hid.enumerate() (~100 ms: it
+    opens every HID device on the PC). None if the list can't be read."""
+    try:
+        import ctypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("a", ctypes.c_ulong), ("b", ctypes.c_ushort), ("c", ctypes.c_ushort),
+                        ("d", ctypes.c_ubyte * 8)]
+        hid_class = GUID(0x4D1E55B2, 0xF16F, 0x11CF, (ctypes.c_ubyte * 8)(0x88, 0xCB, 0, 0x11, 0x11, 0, 0, 0x30))
+        cm = ctypes.WinDLL("cfgmgr32")
+        size = ctypes.c_ulong()
+        if cm.CM_Get_Device_Interface_List_SizeW(ctypes.byref(size), ctypes.byref(hid_class), None, 0):
+            return None
+        buf = ctypes.create_unicode_buffer(size.value)
+        if cm.CM_Get_Device_Interface_ListW(ctypes.byref(hid_class), None, buf, size, 0):
+            return None
+        vid = f"vid_{p.R5_VID:04x}"
+        return frozenset(s for s in buf[:size.value].split("\0") if vid in s.lower())
+    except Exception:
+        return None
+
+
 def connection_type() -> str | None:
-    """'USB cable', '2.4 GHz dongle', or None if not connected."""
+    """'USB cable', '2.4 GHz dongle', or None if not connected. Cheap enough
+    to poll every couple of seconds (see find_device)."""
     try:
         found = find_device()
     except Exception:
@@ -127,6 +167,7 @@ class MouseSettings:
     motion_sync: bool | None = None
     ripple: bool | None = None
     competitive: bool | None = None
+    angle_snap: bool | None = None
     brightness: int | None = None
     sleep_seconds: int | None = None
     light: p.LightState | None = None
@@ -172,7 +213,12 @@ class R5Mouse:
                 path, pid = found
                 self.wired = pid == p.R5_PIDS[0]
                 dev = _hid().device()
-                dev.open_path(path)
+                try:
+                    dev.open_path(path)
+                except Exception:
+                    global _found_cache
+                    _found_cache = None        # search again next time
+                    raise
                 dev.set_nonblocking(True)
                 self._dev = dev
             self._depth += 1
@@ -271,16 +317,29 @@ class R5Mouse:
         with self._lock, self:
             return self.command(p.active_dpi_stage(profile, max(1, min(p.NUM_DPI_STAGES, int(stage)))))
 
+    def set_active_profile(self, profile: int) -> p.Ack | None:
+        """Make the mouse run onboard profile 1..3."""
+        with self._lock, self:
+            return self.command(p.active_profile(max(1, min(3, int(profile)))))
+
+    def read_active_profile(self) -> int | None:
+        with self._lock, self:
+            v = p.reply_byte(self._answer(p.get_active_profile()), 7)
+        return v if v in (1, 2, 3) else None
+
     def read_active_stage(self, profile: int) -> int | None:
         with self:
             v = p.reply_byte(self._answer(p.get_setting(profile, 1, 0x02)))
         return v if v is not None and 1 <= v <= p.NUM_DPI_STAGES else None
 
-    def push_color(self, profile: int, rgb: p.RGB):
-        """One animation frame: static color on the LED and all DPI-stage
-        slots, so a DPI-button flash shows the same color. No read-back."""
+    def push_color(self, profile: int, rgb: p.RGB, set_mode: bool = True):
+        """One animation frame. The LED shows the DPI-stage color, so the
+        stage slots are what change it; the static light-effect only has to be
+        set once per effect (set_mode), which halves the traffic on the
+        wireless link while an effect plays. No read-back."""
         with self._lock:
-            self.send(p.light_effect(profile, p.MODE_STATIC, 0, rgb), read_back=False)
+            if set_mode:
+                self.send(p.light_effect(profile, p.MODE_STATIC, 0, rgb), read_back=False)
             self.send(p.dpi_stage_colors(profile, [rgb] * p.NUM_DPI_STAGES), read_back=False)
 
     def _answer(self, payload: bytes) -> bytes:
@@ -366,6 +425,9 @@ class R5Mouse:
             old, self.READ_DELAY = self.READ_DELAY, 0.1
             try:
                 info["Mouse firmware"] = p.parse_firmware_version(read(2, 16, 0, 0x81)) or "unknown"
+                # same request, addressed to the receiver (device 0)
+                if not self.wired:
+                    info["Dongle firmware"] = p.parse_firmware_version(read(0, 16, 0, 0x81)) or "unknown"
                 active = p.reply_byte(read(2, 1, 0, 0x85), 7)
                 count = p.reply_byte(read(2, 1, 0, 0x86), 7)
                 info["Onboard profile"] = f"{active} of {count}" if active and count else "unknown"
@@ -396,7 +458,7 @@ class R5Mouse:
             s.competitive = self.read_competitive(profile)
             # Hyper mode and the LED indicator are write-only on the R5 Ultra
             # (it rejects those reads with 0xA3), so they aren't asked for.
-            for flag in ("motion_sync", "ripple"):
+            for flag in ("motion_sync", "ripple", "angle_snap"):
                 v = byte(flag)
                 setattr(s, flag, None if v is None else v == 1)
             s.brightness = p.reply_byte(self._answer(p.get_lightness(profile, self.wired)), 9)

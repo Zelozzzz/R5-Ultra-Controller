@@ -90,3 +90,13 @@ def test_hex_color_helpers():
     for bad in ("", "#12345", "zzzzzz", "#1234567"):
         with pytest.raises(ValueError):
             p.hex_to_rgb(bad)
+
+
+def test_angle_snap_and_profile_packets_match_the_official_app():
+    # setAngleSnap: [2]=2 [3]=2 [4]=1 [5]=4 [6]=profile [7]=on
+    assert p.angle_snap(2, True)[:8] == bytes([0, 0, 2, 2, 1, 4, 2, 1])
+    assert p.angle_snap(1, False)[7] == 0
+    # setProfileID: [2]=2 [3]=1 [4]=0 [5]=5 [6]=profile; getProfileID reads 0x85
+    assert p.active_profile(3)[:7] == bytes([0, 0, 2, 1, 0, 5, 3])
+    assert p.get_active_profile()[:7] == bytes([0, 0, 2, 1, 0, 0x85, 0])
+    assert p.READABLE["angle_snap"] == (1, 0x04, 2)

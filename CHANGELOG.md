@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.9
+
+- Pages besides Home are one window each with the same sidebar and header.
+- Bottom bar only appears when changes aren't applied; version moved to
+  Settings > About, which also checks GitHub for updates (can be turned off).
+- Outer glow around the mouse 20% softer; side buttons no longer glow.
+- Empty macro screen with Record / Add shortcut buttons; sliding sidebar highlight.
+- Fixed a timing-dependent test that stopped 1.6 to 1.8 from being released.
+
+## 1.8
+
+- Simpler installer: always called Dorsal-Setup.exe, just Install and Finish,
+  desktop shortcut on by default, one Start menu entry.
+- Tells you to close the official Attack Shark app if it's open.
+- README install steps rewritten, including what to click on the Windows
+  "protected your PC" screen.
+
+## 1.7
+
+- Stops drawing when a game or another full window covers it: about 8% of a
+  core down to basically 0%. Looks exactly the same when you come back.
+- A bit less memory in the tray.
+
+## 1.6
+
+- Way less CPU: almost nothing in the tray (was ~40% of a core), about 5x
+  less with the window open.
+- Finding the mouse is basically instant now (was a tenth of a second, every
+  2 seconds).
+- Light effects are smoother and send half as much to the mouse.
+- Less talking to the mouse while Dorsal is closed.
+- Picking a profile switches the mouse to it.
+- Angle snap and sleep timer in Settings > Mouse. Dongle firmware in Diagnostics.
+
 ## 1.5
 
 - Plainer bottom bar: empty unless something isn't applied, then it says so

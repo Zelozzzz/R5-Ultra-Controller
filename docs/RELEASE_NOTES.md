@@ -1,16 +1,21 @@
-# Dorsal 1.5
+# Dorsal 1.9
 
-The bottom bar is plainer: it stays empty unless you have changes that aren't
-applied yet, then it says "Not applied" with an Apply button.
+Cleaner pages and a bunch of polish. This is also the first working release
+since 1.5 (1.6 to 1.8 never got built because of a broken test), so it
+includes all of those too.
 
-Diagnostics reads the mouse afresh: 30 timed read-command exchanges and eight
-configuration checks, with a comparison against the editor. Results include
-timestamps, missing responses and unavailable fields instead of assumed passes.
+- Every page except Home now looks like one window: same sidebar on the
+  left, same header, no floating cards.
+- The bottom bar only shows up when you have changes that aren't applied.
+- Settings has an About section that tells you when a new Dorsal is out.
+- Softer glow around the mouse, and the side buttons don't glow anymore.
+- Nicer empty macro screen, and the sidebar highlight slides.
 
-Live input runs for 15 seconds and reads the mouse's polling/DPI configuration
-before capture. It reports Windows movement-event rate, arrival intervals and
-button repeats. This does not measure USB-bus timing or click-to-screen latency.
-Estimated power/current figures have been removed from the UI.
+From 1.6 to 1.8:
+- Uses almost nothing while you play (stops drawing when a game covers it)
+  and way less CPU overall.
+- Picking a profile actually switches the mouse to it.
+- Angle snap and sleep timer in Settings > Mouse.
+- Simpler installer: open Dorsal-Setup.exe, Install, Finish.
 
-Install **Dorsal-Setup-1.5.exe**, or extract the portable zip. Existing settings
-are kept. See [Diagnostics](DIAGNOSTICS.md) for measurement methods and limits.
+Your settings are kept when you update.

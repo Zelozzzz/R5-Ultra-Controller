@@ -27,8 +27,9 @@ class FakeMouse:
         self.sent.append(payload)
         return b""
 
-    def push_color(self, profile, rgb):
+    def push_color(self, profile, rgb, set_mode=True):
         with self.lock:
+            self.modes = getattr(self, "modes", []) + [set_mode]
             if self.fail_first > 0:
                 self.fail_first -= 1
                 raise OSError("device disconnected")
@@ -72,7 +73,8 @@ def test_runner_pushes_frames_and_stops():
 def test_runner_survives_the_mouse_disappearing():
     logs = []
     mouse = FakeMouse(fail_first=2)
-    runner = EffectRunner(mouse, EffectContext(), profile=lambda: 1, brightness=lambda: 1, log=logs.append)
+    # full brightness, so every frame is a new color (repeats aren't resent)
+    runner = EffectRunner(mouse, EffectContext(), profile=lambda: 1, brightness=lambda: 255, log=logs.append)
     runner.RETRY_SECONDS = 0.01
     runner.start("test", colors)
     assert wait_until(lambda: len(mouse.frames) > 5)
@@ -104,3 +106,14 @@ def test_starting_a_new_effect_replaces_the_old_one():
     assert wait_until(lambda: (1, (9, 9, 9)) in mouse.frames)
     runner.stop()
     assert threading.active_count() < 10
+
+
+def test_runner_sets_the_mode_once_and_skips_repeated_colors():
+    mouse = FakeMouse()
+    runner = EffectRunner(mouse, EffectContext(), profile=lambda: 1, brightness=lambda: 255)
+    frames = [((10, 0, 0), 0.001)] * 5 + [((20, 0, 0), 0.001)] * 5 + [((30, 0, 0), 5)]
+    runner.start("steady", lambda ctx: iter(frames))
+    assert wait_until(lambda: len(mouse.frames) == 3)
+    runner.stop()
+    assert [rgb for _p, rgb in mouse.frames] == [(10, 0, 0), (20, 0, 0), (30, 0, 0)]
+    assert mouse.modes == [True, False, False]

@@ -1,11 +1,11 @@
 ; Inno Setup script for Dorsal's installer.
 ; Build dist\Dorsal first (python packaging\build.py), then:
-;     iscc /DAppVersion=1.5 packaging\installer.iss
+;     iscc /DAppVersion=1.9 packaging\installer.iss
 ; GitHub Actions does this on every release tag.
 
 #define AppName "Dorsal"
 #ifndef AppVersion
-  #define AppVersion "1.5"
+  #define AppVersion "1.9"
 #endif
 #ifndef BuildDist
   #define BuildDist "..\dist"
@@ -20,16 +20,18 @@ AppVerName={#AppName} {#AppVersion}
 AppPublisher=Zelozzzz
 AppPublisherURL=https://github.com/Zelozzzz/R5-Ultra-Controller
 AppSupportURL=https://github.com/Zelozzzz/R5-Ultra-Controller/issues
-; Per-user install: no admin prompt. Users can still choose "all users".
+; Per-user install: no admin prompt, no questions. The only page is the
+; shortcut/startup choice, then it installs and offers to open Dorsal.
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
 DefaultDirName={autopf}\{#AppName}
 DisableProgramGroupPage=yes
+DisableDirPage=yes
+DisableReadyPage=yes
 OutputDir={#BuildDist}
-OutputBaseFilename=Dorsal-Setup-{#AppVersion}
+; no version in the name, so releases/latest/download/Dorsal-Setup.exe always works
+OutputBaseFilename=Dorsal-Setup
 SetupIconFile=..\build\packaging\dorsal.ico
 UninstallDisplayIcon={app}\Dorsal.exe
-LicenseFile=..\LICENSE
 WizardStyle=modern
 Compression=lzma2
 SolidCompression=yes
@@ -40,7 +42,7 @@ AppMutex=Dorsal.SingleInstance
 CloseApplications=yes
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a desktop shortcut"
 Name: "startup"; Description: "Start Dorsal with Windows (hidden in the tray)"; Flags: unchecked
 
 [Files]
@@ -48,8 +50,11 @@ Source: "{#BuildDist}\Dorsal\*"; DestDir: "{app}"; Flags: ignoreversion recurses
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\Dorsal.exe"; WorkingDir: "{app}"; Comment: "Attack Shark R5 Ultra mouse control"; AppUserModelID: "Dorsal.App"
-Name: "{autoprograms}\Attack Shark R5 Ultra - Dorsal"; Filename: "{app}\Dorsal.exe"; WorkingDir: "{app}"; Comment: "Open Dorsal to control your Attack Shark R5 Ultra"; AppUserModelID: "Dorsal.App"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\Dorsal.exe"; WorkingDir: "{app}"; AppUserModelID: "Dorsal.App"; Tasks: desktopicon
+
+[InstallDelete]
+; older versions made a second Start menu entry
+Type: files; Name: "{autoprograms}\Attack Shark R5 Ultra - Dorsal.lnk"
 
 [Registry]
 ; Register a normal application executable without changing the user's PATH.

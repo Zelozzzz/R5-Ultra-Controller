@@ -300,6 +300,11 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 .table .th:hover { background: var(--solid); }
 .empty { display: grid; place-items: center; text-align: center; color: var(--muted); font-size: .9rem; padding: 2.4rem 1rem; line-height: 1.6; }
 .empty b { color: var(--text-2); font-weight: 600; }
+.empty.big { gap: .35rem; padding: 4.5rem 1rem; }
+.empty.big b { color: var(--text); font-size: 1rem; }
+.empty-icon { width: 3rem; height: 3rem; display: grid; place-items: center; margin-bottom: .5rem; border-radius: 50%;
+  color: var(--accent-hi); background: rgba(var(--accent-rgb), .08); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .25); }
+.empty-actions { display: flex; gap: .5rem; margin-top: .8rem; }
 .ic.big { width: 2.2rem; height: 2.2rem; stroke-width: 1.4; opacity: .5; margin-bottom: .4rem; }
 .console {
   font-family: var(--mono); font-size: .8rem; line-height: 1.5; color: var(--text-2); margin: 0;
@@ -326,6 +331,23 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 /* tabs inside a pane header: text with a line on the pane's edge */
 .tabs-head { padding-left: .5rem; }
 .pane-tabs { align-self: stretch; display: flex; }
+
+/* Every page but Home is one window split into sections, like desktop
+   software: one sheet, a sidebar on the left with the same width and look
+   everywhere, thin dividers instead of separate floating cards. */
+.workspace { --side-w: 16rem; display: grid; gap: 0; height: 100%; overflow: hidden; }
+.workspace { background: linear-gradient(135deg, rgba(255, 255, 255, .03), transparent 30%), rgba(var(--bg-rgb), .34); }
+.workspace > * + * { border-left: 1px solid var(--line); }
+.sidebar { display: flex; flex-direction: column; min-height: 0; background: rgba(0, 0, 0, .18); }
+.side-title { margin: 0; font-size: .72rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.side-title .count { letter-spacing: 0; }
+.has-slide { position: relative; }
+.has-slide > :not(.side-slide) { position: relative; z-index: 1; }
+.has-slide .on { background: transparent !important; box-shadow: none !important; }
+.side-slide { position: absolute; top: 0; z-index: 0; pointer-events: none; border-radius: var(--r-s);
+  background: var(--sel); box-shadow: inset 0 0 0 1px var(--sel-line); }
+.slide-ready .side-slide { transition: transform .24s var(--ease), height .24s var(--ease), opacity .15s; }
+.crumb::before { content: "›"; margin: 0 .5rem; color: var(--muted); font-weight: 400; }
 .pane-tabs button { position: relative; border: 0; background: none; padding: 0 .75rem; color: var(--text-2); font-size: .92rem; transition: color .15s; }
 .pane-tabs button:hover { color: var(--text); }
 .pane-tabs button.on { color: var(--text); font-weight: 600; }
@@ -443,7 +465,7 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
   -webkit-mask-size: contain; mask-size: contain; -webkit-mask-position: center; mask-position: center;
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }
 .mouse-art .glow { background: rgb(var(--led, 255, 0, 0)); opacity: var(--led-strength, 0); }
-.mouse-art .bloom { background: rgb(var(--led, 255, 0, 0)); opacity: calc(var(--led-strength, 0) * .26); filter: blur(.55rem); }
+.mouse-art .bloom { background: rgb(var(--led, 255, 0, 0)); opacity: calc(var(--led-strength, 0) * .21); filter: blur(.55rem); }
 .mouse-art .core { background: #fff; opacity: calc(var(--led-strength, 0) * .7); }
 
 .callouts { position: absolute; inset: 0; pointer-events: none; }
@@ -460,7 +482,7 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 
 /* ── BUTTONS: categories | options | the mouse ── */
 
-.assign-layout { display: grid; grid-template-columns: 15rem minmax(20rem, 1fr) minmax(22rem, 1.2fr); gap: .8rem; height: 100%; }
+.assign-layout { grid-template-columns: var(--side-w) minmax(20rem, 1fr) minmax(22rem, 1.2fr); }
 .cat-list { display: flex; flex-direction: column; gap: .15rem; padding: .6rem; }
 .cat { display: flex; align-items: center; gap: .7rem; padding: .62rem .7rem; border: 0; border-radius: var(--r-s); background: none;
   color: var(--text-2); font-size: .93rem; text-align: left; white-space: nowrap; transition: background .15s, color .15s; }
@@ -492,7 +514,7 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 
 /* ── MACROS: the library, and the editor next to it ── */
 
-.macro-layout { display: grid; grid-template-columns: 17rem minmax(0, 1fr); gap: .8rem; height: 100%; }
+.macro-layout { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .macro-library-list { display: flex; flex-direction: column; gap: .1rem; }
 .macro-library-item { display: block; width: 100%; padding: .6rem .75rem; border: 0; border-radius: var(--r-s); background: transparent; text-align: left; }
 .macro-library-item b { display: block; font-size: .93rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -510,7 +532,7 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 
 /* ── PROFILES: your setups on the left, the chosen one on the right ── */
 
-.profiles-layout { display: grid; grid-template-columns: 19rem minmax(0, 1fr); gap: .8rem; height: 100%; }
+.profiles-layout { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .setup-color { width: 1rem; height: 1rem; flex: none; border-radius: .2rem; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .25); }
 .setup-color.big { width: 1.4rem; height: 1.4rem; align-self: center; }
 .setup-hero { display: flex; align-items: flex-end; gap: 1.2rem; padding: 1.1rem 1.2rem; margin-bottom: 1.2rem;
@@ -532,7 +554,8 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 
 /* ── DIAGNOSTICS: one pane, a tab for each job ── */
 
-.diag { height: 100%; }
+.diag { height: 100%; border-radius: 0; }
+.diag-layout { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .diag .grid.two { align-items: start; }
 .diagnostic-command { display: flex; align-items: center; justify-content: space-between; gap: 2rem;
   padding: .4rem .2rem 1.5rem; }
@@ -590,16 +613,17 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 
 /* ── SETTINGS: sections on the left, like any desktop app ── */
 
-.settings-pane { flex-direction: row; height: 100%; }
-.settings-nav { flex: none; width: 14rem; display: flex; flex-direction: column; gap: .15rem; padding: .8rem .6rem;
-  border-right: 1px solid var(--line); background: rgba(0, 0, 0, .12); }
-.settings-nav button { display: flex; align-items: center; gap: .7rem; padding: .62rem .75rem; border: 0; border-radius: var(--r-s);
+.settings-pane { grid-template-columns: var(--side-w) minmax(0, 1fr); }
+.side-nav { gap: .15rem; }
+.side-nav .pane-head { margin-bottom: .45rem; }
+.side-nav button { margin: 0 .6rem; display: flex; align-items: center; gap: .7rem; padding: .62rem .75rem; border: 0; border-radius: var(--r-s);
   background: none; color: var(--text-2); font-size: .93rem; text-align: left; transition: background .15s, color .15s; }
-.settings-nav button:hover { background: var(--hover); color: var(--text); }
-.settings-nav button.on { background: var(--sel); color: var(--text); box-shadow: inset 0 0 0 1px var(--sel-line); }
-.settings-nav button.on .ic { color: var(--accent-hi); }
-.settings-body { flex: 1; min-width: 0; overflow-y: auto; padding: 1.4rem 1.8rem; }
-.sec { max-width: 52rem; }
+.side-nav button:hover { background: var(--hover); color: var(--text); }
+.side-nav button.on { background: var(--sel); color: var(--text); box-shadow: inset 0 0 0 1px var(--sel-line); }
+.side-nav button.on .ic { color: var(--accent-hi); }
+.settings-body { min-width: 0; overflow-y: auto; padding: 1.4rem 1.8rem; }
+.sec { max-width: 68rem; }
+.sub-title { margin-top: 1.8rem; font-size: 1rem; }
 .sec-title { margin: 0 0 1rem; font-size: 1.25rem; font-weight: 600; }
 .group { padding: .2rem 0; }
 .srow { display: flex; align-items: center; gap: 1rem; padding: .95rem 1.2rem; }
@@ -622,7 +646,7 @@ label.srow { cursor: pointer; }
   background: rgba(var(--bg-rgb), .6); border: 1px solid var(--line); border-radius: .5rem; }
 #dock { flex: 1; display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .status { color: var(--warn); font-size: .82rem; white-space: nowrap; }
-.version { color: var(--muted); font-size: .74rem; }
+#version { color: var(--muted); font-weight: 400; }
 
 /* ── windows over the page ── */
 

@@ -199,3 +199,23 @@ def test_reads_ignore_replies_to_other_commands(fake_mouse):
         "close": lambda self: None})()), setattr(mouse, "_depth", mouse._depth + 1), mouse)[-1]
     assert mouse.read_stage_dpis(1) is None
     assert mouse.read_settings(1).read_count()[0] == 0
+
+
+def test_device_search_only_reruns_when_the_device_list_changes(monkeypatch):
+    from r5ultra import device
+    listing = {"paths": frozenset({"hid#vid_373e&pid_0047&mi_02"})}
+    searches = []
+    monkeypatch.setattr(device, "_hid_interface_paths", lambda: listing["paths"])
+    monkeypatch.setattr(device, "_search_device", lambda: searches.append(1) or (b"path", 0x0047))
+    monkeypatch.setattr(device, "_found_cache", None)
+    assert device.connection_type() == "2.4 GHz dongle"
+    assert device.find_device() == (b"path", 0x0047)
+    assert len(searches) == 1                      # second call reused the answer
+    listing["paths"] = frozenset()                 # unplugged: no search needed
+    assert device.connection_type() is None and len(searches) == 1
+    listing["paths"] = frozenset({"hid#vid_373e&pid_0046&mi_02"})
+    device.find_device()
+    assert len(searches) == 2
+    monkeypatch.setattr(device, "_hid_interface_paths", lambda: None)   # list unavailable: always search
+    device.find_device(); device.find_device()
+    assert len(searches) == 4

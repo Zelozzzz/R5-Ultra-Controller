@@ -29,7 +29,7 @@ from .effects import EFFECTS
 
 WEB = Path(__file__).resolve().parent / "web"
 DOCS = winapp.resource_root() / "docs"
-ASSET_VERSION = "5"             # bump when scenery output changes, to re-render cached images
+ASSET_VERSION = "6"             # bump when scenery output changes, to re-render cached images
 MOUSE_SIZE = (520, 840)
 
 
@@ -388,6 +388,19 @@ class Api:
         self._c.set_close_to_tray(enabled)
 
     @_safe
+    def check_updates(self):
+        self._c.check_for_update()
+
+    @_safe
+    def set_check_updates(self, enabled):
+        self._c.set_check_updates(enabled)
+
+    @_safe
+    def open_update(self):
+        import webbrowser
+        webbrowser.open(self._c.update.get("url") or f"{REPO_URL}/releases/latest")
+
+    @_safe
     def set_theme(self, name):
         self._c.set_theme(name)
         self._ui.style_titlebar()
@@ -443,6 +456,57 @@ def copy_to_clipboard(text: str):
         u32.CloseClipboard()
 
 
+# is anything in front of us?
+
+_SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
+                  "Windows.UI.Core.CoreWindow", "XamlExplorerHostIslandWindow",
+                  "ForegroundStaging", "MultitaskingViewFrame", "TaskSwitcherWnd"}
+
+
+def _window_rect(hwnd: int):
+    class RECT(ctypes.Structure):
+        _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]
+    r = RECT()
+    # the visible frame; GetWindowRect includes the invisible resize border
+    if ctypes.windll.dwmapi.DwmGetWindowAttribute(ctypes.c_void_p(hwnd), 9, ctypes.byref(r), ctypes.sizeof(r)):
+        if not ctypes.windll.user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(r)):
+            return None
+    return r.l, r.t, r.r, r.b
+
+
+def covered_by_foreground(ours: int) -> bool:
+    """True when the active window (a game, a maximized browser...) sits on
+    top of all of Dorsal's window, so nobody can see the page. Windows that
+    might be see-through (layered, cloaked, the desktop, the taskbar, the
+    alt-tab screen) never count."""
+    u32 = ctypes.windll.user32
+    u32.GetForegroundWindow.restype = ctypes.c_void_p
+    try:
+        fg = u32.GetForegroundWindow()
+        if not fg or fg == ours:
+            return False
+        pid = ctypes.c_ulong()
+        u32.GetWindowThreadProcessId(ctypes.c_void_p(fg), ctypes.byref(pid))
+        if pid.value == os.getpid():
+            return False
+        name = ctypes.create_unicode_buffer(128)
+        u32.GetClassNameW(ctypes.c_void_p(fg), name, 128)
+        if name.value in _SHELL_CLASSES:
+            return False
+        if u32.GetWindowLongW(ctypes.c_void_p(fg), -20) & (0x80000 | 0x20):   # WS_EX_LAYERED | WS_EX_TRANSPARENT
+            return False
+        cloaked = ctypes.c_int(0)
+        ctypes.windll.dwmapi.DwmGetWindowAttribute(ctypes.c_void_p(fg), 14, ctypes.byref(cloaked), 4)
+        if cloaked.value:
+            return False
+        a, b = _window_rect(fg), _window_rect(ours)
+        if not a or not b:
+            return False
+        return a[0] <= b[0] and a[1] <= b[1] and a[2] >= b[2] and a[3] >= b[3]
+    except Exception:
+        return False
+
+
 # the window
 
 class WebUI:
@@ -455,12 +519,20 @@ class WebUI:
         self.unsaved_macro = False
         self._quitting = False
         self._running = True
+        self.hidden = start_hidden
+        self.covered = False              # another window is fully on top of ours
+        self._hwnd_cached: int | None = None
+        ctrl.ui_visible = not start_hidden
         threading.Thread(target=self._warm, daemon=True).start()
         self.window = webview.create_window(
             APP_NAME, url=self.site.index(), js_api=Api(self), width=1440, height=920,
             min_size=(1100, 720), background_color="#0c0605", hidden=start_hidden, text_select=False)
         self.window.events.closing += self._on_closing
-        self.window.events.shown += lambda: self.style_titlebar()
+        self.window.events.shown += self._on_shown
+        # minimized counts as hidden too, so the page stops drawing
+        self.window.events.minimized += lambda: self._set_hidden(True)
+        self.window.events.restored += lambda: self._set_hidden(False)
+        self.window.events.maximized += lambda: self._set_hidden(False)
         self.tray = self._build_tray()
         ctrl.on_low_battery = self._notify
 
@@ -479,9 +551,14 @@ class WebUI:
         s["has_tray"] = self.tray is not None
         return s
 
+    def _on_shown(self):
+        self._hwnd_cached = self._hwnd()        # read here, on the window's own thread
+        self.style_titlebar()
+
     def run(self):
         self.ctrl.start()
         threading.Thread(target=self._pusher, daemon=True, name="ui-pusher").start()
+        threading.Thread(target=self._cover_watch, daemon=True, name="cover-watch").start()
         # Served over pywebview's local HTTP server (127.0.0.1 only): CSS masks,
         # which light the mouse, aren't allowed to load from file:// pages.
         # Private mode: no browser cache on disk, so an updated Dorsal is never
@@ -497,7 +574,8 @@ class WebUI:
         last_rev, last_frame, last_push = -1, None, 0.0
         while self._running:
             time.sleep(1 / 30)
-            if not self.page_ready:
+            if not self.page_ready or self.hidden or self.covered:
+                last_rev, last_frame = -1, None     # send everything fresh once it's back
                 continue
             try:
                 now = time.monotonic()
@@ -513,6 +591,24 @@ class WebUI:
                 if not self._running:
                     return
                 time.sleep(0.5)
+
+    def _cover_watch(self):
+        """Pause the page's drawing while another window covers all of it
+        (e.g. a game). The last frame stays on screen, so coming back looks
+        exactly the same, it just stops costing anything in between."""
+        while self._running:
+            time.sleep(0.25)
+            hwnd = self._hwnd_cached
+            if not self.page_ready or not hwnd:
+                continue
+            covered = not self.hidden and covered_by_foreground(hwnd)
+            if covered != self.covered:
+                self.covered = covered
+                self.ctrl.ui_visible = not (covered or self.hidden)
+                try:
+                    self._js(f"window.dorsal && dorsal.covered({'true' if covered else 'false'})")
+                except Exception:
+                    pass
 
     # files
 
@@ -591,14 +687,42 @@ class WebUI:
     def show(self):
         self.window.show()
         self.window.restore()
+        self._set_hidden(False)
         self.style_titlebar()
+
+    def hide_to_tray(self):
+        # the page only notices while the window is still up, so this goes first
+        self._set_hidden(True)
+        self.window.hide()
+
+    def _set_hidden(self, hidden: bool):
+        """Hiding the window doesn't tell WebView2, so the page kept animating
+        in the tray (~40% of a core). Hiding the browser control does: the
+        page gets visibilityState "hidden" and stops drawing."""
+        self.hidden = hidden
+        self.ctrl.ui_visible = not hidden
+        try:
+            from System import Action
+            form = self.window.native
+            view = form.browser.webview
+            def apply():
+                view.Visible = not hidden
+                try:
+                    # hidden: let WebView2 hand back memory it can rebuild on show
+                    from Microsoft.Web.WebView2.Core import CoreWebView2MemoryUsageTargetLevel as Level
+                    view.CoreWebView2.MemoryUsageTargetLevel = Level.Low if hidden else Level.Normal
+                except Exception:
+                    pass
+            form.Invoke(Action(apply))
+        except Exception as exc:
+            self.ctrl.log(f"Page visibility: {exc}")
 
     def _on_closing(self):
         if self._quitting:
             return True
         if self.ctrl.close_to_tray and self.tray is not None:
             self.ctrl.save()
-            self.window.hide()
+            self.hide_to_tray()
             return False
         return self._may_quit()
 

@@ -28,8 +28,11 @@ DEFAULTS: dict = {
     "last_color": "#FF0000",
     "brightness": 200,
     "profile": 1,
-    "always_on": True,
+    "always_on": True,            # old setting, read once to fill sleep_min
+    "sleep_min": None,            # minutes before the mouse sleeps, 0 = never
+    "angle_snap": False,
     "close_to_tray": True,
+    "check_updates": True,        # ask GitHub for a newer release when Dorsal starts
     "dpi_stage": 1,
     "stage_dpis": DEFAULT_STAGE_DPIS,
     "stage_colors": DEFAULT_STAGE_COLORS,

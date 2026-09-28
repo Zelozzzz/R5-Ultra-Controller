@@ -325,8 +325,9 @@ function placeCallouts() {
 
 function renderDock() {
   document.body.classList.toggle("home", tab === "home");
-  // quiet unless something hasn't been sent to the mouse yet
+  // the bar only shows up when something hasn't been sent to the mouse yet
   const applying = S.busy.includes("apply");
+  $(".dock-row").hidden = !S.dirty && !applying;
   $("#status").textContent = S.dirty && !applying ? "Not applied" : "";
   $("#version").textContent = `v${S.version}`;
   $("#dock-read").hidden = tab !== "profiles";
@@ -552,7 +553,11 @@ async function renderMacro() {
       <span>${esc(s.kind)}</span><span>${esc(s.kind === "Delay" ? `${s.value} ms` : s.value)}</span><span class="muted">${elapsed.toLocaleString()} ms</span></div>`;
   });
   table.innerHTML = `<div class="tr th"><span>#</span><span>Action</span><span>Value</span><span>Elapsed</span></div>` +
-    (rows.length ? rows.join("") : `<div class="empty">No steps yet.<br>Record keys, add a shortcut, or add steps one at a time.</div>`);
+    (rows.length ? rows.join("") : `<div class="empty big"><span class="empty-icon"><svg class="ic"><use href="#i-kbd"/></svg></span>
+      <b>No steps yet</b><span>Record what you type, or add a shortcut like Ctrl+C.</span>
+      <span class="empty-actions"><button class="btn primary sm" data-proxy="macro-record">Record keys</button>
+      <button class="btn sm" data-proxy="macro-shortcut">Add shortcut</button></span></div>`);
+  $$("[data-proxy]", table).forEach((b) => b.onclick = () => $(`#${b.dataset.proxy}`).click());
   $$(".tr[data-i]", table).forEach((r) => r.onclick = () => {
     m.sel = +r.dataset.i;
     const s = m.steps[m.sel];
@@ -928,6 +933,21 @@ function renderSettings() {
   $("#set-tray").checked = S.settings.close_to_tray;
   $("#set-tray").disabled = !S.has_tray;
   $$("#theme-seg button").forEach((b) => b.classList.toggle("on", b.dataset.theme === S.settings.theme));
+  $("#set-angle").checked = S.angle_snap;
+  $("#set-updates").checked = S.settings.check_updates;
+  const up = S.update || {};
+  $("#update-text").textContent = {
+    checking: "Checking GitHub…",
+    latest: "You have the newest version.",
+    available: `Dorsal ${up.version} is out.`,
+    error: "Couldn't reach GitHub. Try again later.",
+  }[up.state] || "Not checked yet.";
+  $("#update-text").className = up.state === "available" ? "c-ok" : "";
+  $("#update-btn").textContent = up.state === "available" ? `Get ${up.version}` : "Check for updates";
+  $("#update-btn").className = up.state === "available" ? "btn primary" : "btn";
+  $("#update-btn").disabled = up.state === "checking";
+  setHtml($("#sleep-seg"), S.sleep_choices.map((m) =>
+    `<button data-min="${m}" class="${m === S.sleep_min ? "on" : ""}">${m ? `${m} min` : "Never"}</button>`).join(""));
   setHtml($("#settings-device"), dl([
     ["Connection", S.link_type || "Not connected"],
     ["Firmware", S.firmware || "—"],
@@ -1185,8 +1205,14 @@ function wire() {
   $("#profile-import").onclick = () => call("import_profile");
 
   // tabs inside panes
-  wireViews($("#diag-tabs"), ".diag-view", "diag", () => { $("#link-chart").dataset.key = ""; render(); });
+  wireViews($("#diag-tabs"), ".diag-view", "diag", (name) => {
+    $("#diag-title").textContent = $(`#diag-tabs button[data-view="${name}"]`).textContent;
+    $("#link-chart").dataset.key = ""; render();
+  });
   wireViews($("#settings-nav"), ".settings-body .sec", "settings");
+  slideHighlight($("#settings-nav"), "button");
+  slideHighlight($("#diag-tabs"), "button");
+  slideHighlight($("#assign-cats"), ".cat");
 
   // diagnostics page
   $("#probe-name").innerHTML = A.probes.map((p) => `<option>${esc(p)}</option>`).join("");
@@ -1215,6 +1241,10 @@ function wire() {
   $("#fw-open").onclick = () => call("firmware_open");
   $("#fw-doc").onclick = () => call("open_doc", "FIRMWARE.md");
   $("#dev-refresh").onclick = () => call("read_settings");
+  $("#set-updates").onchange = (e) => call("set_check_updates", e.target.checked);
+  $("#update-btn").onclick = () => call((S.update || {}).state === "available" ? "open_update" : "check_updates");
+  $("#set-angle").onchange = (e) => call("set_setting", "angle_snap", e.target.checked);
+  $("#sleep-seg").onclick = (e) => { const b = e.target.closest("button[data-min]"); if (b) call("set_setting", "sleep_min", +b.dataset.min); };
   $("#mouse-import").onclick = async () => { const m = await call("import_mouse_image"); if (m) { A.mouse = m; buildArt(); placeCallouts(); } };
   $("#profile-reset").onclick = async () => {
     if (await confirmBox("Reset profile", `Reset profile ${S.profile} on the mouse to factory settings?\nIts DPI stages and colors will be lost.`, "Reset")) call("reset_profile");
@@ -1309,6 +1339,67 @@ function setBackdrop(name) {
   img.src = name;
 }
 
+// The background drifts a few pixels a second, but CSS redraws it (blur and
+// all) at the monitor's full refresh rate: ~40% of a core at 60 Hz, worse at
+// 144/240 Hz. Driving the same animations by hand at 24 fps looks identical
+// and costs ~5%.
+const AMBIENT_FPS = 24;
+let ambientTimer = 0;
+// Scene time only runs while someone can see it (window up and not covered by
+// another window), so after a pause the drift picks up where it stopped.
+const ambientClock = { shown: 0, since: null, covered: false };
+function ambientVisible() { return !document.hidden && !ambientClock.covered; }
+function ambientNow() { return ambientClock.shown + (ambientClock.since === null ? 0 : performance.now() - ambientClock.since); }
+function ambientTick() {
+  const on = ambientVisible();
+  if (on && ambientClock.since === null) ambientClock.since = performance.now();
+  if (!on && ambientClock.since !== null) { ambientClock.shown = ambientNow(); ambientClock.since = null; }
+}
+document.addEventListener("visibilitychange", ambientTick);
+function throttleAmbient() {
+  clearInterval(ambientTimer);
+  const anims = document.getAnimations().filter((a) => a.effect?.target?.closest?.("#ambient, #backdrop"));
+  if (!anims.length) return;
+  anims.forEach((a) => a.pause());
+  const base = anims.map((a) => a.currentTime || 0);
+  ambientTick();
+  ambientTimer = setInterval(() => {
+    if (!ambientVisible()) return;      // nothing changes, so nothing gets drawn
+    const dt = ambientNow();
+    anims.forEach((a, i) => { a.currentTime = base[i] + dt; });
+  }, 1000 / AMBIENT_FPS);
+}
+
+// A highlight that slides to the selected item in a sidebar, like the
+// underline under the top tabs. Lists that get re-rendered get the same
+// element back, placed where it was first so the move still animates.
+function slideHighlight(container, itemSel) {
+  const bar = document.createElement("i");
+  bar.className = "side-slide";
+  container.classList.add("has-slide");
+  let last = null;
+  const place = () => {
+    if (!bar.isConnected) {
+      container.appendChild(bar);
+      if (last) { bar.style.transform = last; void bar.offsetHeight; }
+    }
+    const on = container.querySelector(`${itemSel}.on`);
+    bar.style.opacity = on ? 1 : 0;
+    if (!on || !on.offsetHeight) return;          // page not on screen yet
+    const jump = !bar.offsetHeight;                // first time it's visible: appear in place
+    if (jump) bar.style.transition = "none";
+    bar.style.left = `${on.offsetLeft}px`;
+    bar.style.width = `${on.offsetWidth}px`;
+    bar.style.height = `${on.offsetHeight}px`;
+    last = bar.style.transform = `translateY(${on.offsetTop}px)`;
+    if (jump) { void bar.offsetHeight; bar.style.transition = ""; }
+  };
+  new MutationObserver(place).observe(container, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  new ResizeObserver(place).observe(container);
+  place();
+  requestAnimationFrame(() => container.classList.add("slide-ready"));   // no slide in from the top on first show
+}
+
 // start
 
 function moveTabIndicator() {
@@ -1328,6 +1419,7 @@ window.dorsal = {
     render();
   },
   frame,
+  covered(on) { ambientClock.covered = !!on; ambientTick(); },
   async confirmQuit() {
     if (await confirmBox("Unsaved macro", "Discard the unsaved macro edits and quit?", "Quit")) call("quit", true);
   },
@@ -1346,6 +1438,7 @@ async function start() {
     root.setProperty("--tex-snow-near", `url("${hello.ambient["snow-near"]}")`);
     document.body.classList.add("ambient-ready");
   }
+  requestAnimationFrame(throttleAmbient);
   buildArt();
   wire();
   wirePicker();

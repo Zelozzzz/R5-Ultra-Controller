@@ -356,8 +356,7 @@ class PhotoMouseArt:
                                       alpha).point(lambda v: v * 0.55)             # onto strut edges
         bloom = _blur(through, mw * 0.06).point(lambda v: min(255, v * 1.5)).point(lambda v: v * 0.45)
         # The bloom belongs on the shell; only a trace of it carries past the outline.
-        bloom = ImageChops.lighter(ImageChops.multiply(bloom, hull),
-                                   ImageChops.subtract(bloom, hull).point(lambda v: v * 0.3))
+        outside_bloom = ImageChops.subtract(bloom, hull).point(lambda v: v * 0.3)
         # Out from underneath, onto the desk: faint, hugging the base, and only
         # really visible near the LED in the palm (the front barely leaks at all).
         spill = ImageChops.subtract(_blur(hull, mw * 0.045).point(lambda v: min(255, v * 1.6)), hull)
@@ -368,8 +367,19 @@ class PhotoMouseArt:
         fade = Image.new("L", size, 0)
         ImageDraw.Draw(fade).rounded_rectangle((margin, margin, W - margin, H - margin), radius=int(margin * 3), fill=255)
         under = ImageChops.multiply(under, _blur(fade, margin * 0.9))
+        # Everything outside the outline is 20% softer, and much softer along the
+        # side buttons: they sit level with the LED, so the spill piled up there
+        # and swallowed the button pins.
+        keep = Image.new("L", size, 204)
+        side = Image.new("L", size, 0)
+        ImageDraw.Draw(side).ellipse((ox - mw * 0.22, oy + mh * 0.26, ox + mw * 0.16, oy + mh * 0.62), fill=255)
+        keep = ImageChops.subtract(keep, _blur(side, mw * 0.06).point(lambda v: v * 0.65))
+        under = ImageChops.multiply(under, keep)
+        bloom = ImageChops.lighter(ImageChops.multiply(bloom, hull), ImageChops.multiply(outside_bloom, keep))
 
         glow = ImageChops.lighter(ImageChops.lighter(through, scatter), ImageChops.lighter(bloom, under))
+        # and keep the side buttons themselves dark, so their pins stay readable
+        glow = ImageChops.multiply(glow, ImageChops.invert(_blur(side, mw * 0.05).point(lambda v: v * 0.8)))
         self.glow = glow.resize(self.size, Image.LANCZOS)
         # Close to the LED the light is so bright it reads as white.
         self.core = through.point(lambda v: int(255 * (v / 255) ** 3)).resize(self.size, Image.LANCZOS)

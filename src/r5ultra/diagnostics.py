@@ -418,6 +418,7 @@ def settings_evidence(settings, expected: dict) -> list[dict]:
              ("debounce", "Debounce", settings.debounce),
              ("motion_sync", "Motion sync", settings.motion_sync),
              ("ripple", "Ripple control", settings.ripple),
+             ("angle_snap", "Angle snap", settings.angle_snap),
              ("competitive", "Competitive Mode", settings.competitive))
 
     def display(value):

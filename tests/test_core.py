@@ -156,3 +156,26 @@ def test_assigning_a_library_macro_uploads_it_then_binds(ctrl, monkeypatch):
     assert calls == [("macro", 2, 2), ("button", 4, 18, b"\x00\x02")]
     with pytest.raises(ValueError):                       # an empty slot with nothing to put in it
         ctrl.write_binding(5, "Onboard macro", slot=3)
+
+
+def test_warns_once_when_the_official_app_is_open(ctrl, monkeypatch):
+    monkeypatch.setattr(core.sysinfo, "running_process_names", lambda: {"ATTACK SHARK GAMING.exe", "explorer.exe"})
+    ctrl._check_official_app()
+    ctrl._check_official_app()
+    assert [n["title"] for n in ctrl.notices] == ["Close the Attack Shark app"]
+    assert "ATTACK SHARK GAMING is running" in ctrl.notices[0]["text"]
+
+
+def test_no_warning_without_the_official_app(ctrl, monkeypatch):
+    monkeypatch.setattr(core.sysinfo, "running_process_names", lambda: {"explorer.exe"})
+    ctrl._check_official_app()
+    assert not ctrl.notices
+
+
+def test_sleep_setting_replaces_always_on(ctrl):
+    ctrl.set_setting("sleep_min", 10)
+    assert ctrl.sleep_seconds() == 600 and not ctrl.always_on
+    ctrl.set_setting("sleep_min", 0)
+    assert ctrl.sleep_seconds() == p.SLEEP_NEVER and ctrl.always_on
+    with pytest.raises(ValueError):
+        ctrl.set_setting("sleep_min", 7)

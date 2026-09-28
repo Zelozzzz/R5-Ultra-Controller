@@ -20,7 +20,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import APP_NAME, __version__, config, startup, sysinfo, winapp
+from . import APP_NAME, __version__, config, startup, sysinfo, updates, winapp
 from . import diagnostics as dg
 from . import macros
 from . import protocol as p
@@ -33,6 +33,7 @@ from .runner import EffectRunner
 
 CONNECTION_POLL_S = 2.0
 BATTERY_POLL_S = 10.0          # the official app polls every 2.5 s; 10 s is plenty
+BATTERY_POLL_HIDDEN_S = 60.0   # window closed: just enough for the low-battery warning
 LOW_BATTERY = 15
 LIVE_APPLY_DELAY_S = 0.12      # dragging a slider sends one update, not a hundred
 DPI_WRITE_DELAY_S = 0.35
@@ -75,8 +76,12 @@ class Controller:
         self.motion_sync = bool(c["motion_sync"])
         self.ripple = bool(c["ripple"])
         self.competitive: bool | None = None  # authoritative state comes from the mouse
-        self.always_on = bool(c["always_on"])
+        self.sleep_min = int(c["sleep_min"]) if c.get("sleep_min") is not None else (0 if c["always_on"] else 5)
+        self.angle_snap = bool(c.get("angle_snap", False))
+        self.ui_visible = True                  # the window is up; background polls pause when it isn't
         self.close_to_tray = bool(c["close_to_tray"])
+        self.check_updates = bool(c.get("check_updates", True))
+        self.update = {"state": "idle"}         # idle | checking | latest | available | error
         from .theme import DEFAULT
         self.theme = c.get("theme") or DEFAULT
 
@@ -86,6 +91,7 @@ class Controller:
         self.firmware: str | None = None
         self.battery_history = dg.BatteryHistory(config.config_dir() / "battery.json")
         self._low_warned = False
+        self._warned_official = False           # told them once to close the official app
 
         self.status = "Ready"
         self.log_lines: deque[str] = deque(maxlen=400)
@@ -196,6 +202,40 @@ class Controller:
     def start(self):
         """Begin connection/battery polling and restore the lighting."""
         threading.Thread(target=self._loop, daemon=True, name="controller").start()
+        if self.check_updates:
+            timer = threading.Timer(4, self.check_for_update)
+            timer.daemon = True
+            timer.start()
+
+    def check_for_update(self):
+        with self.lock:
+            if self.update.get("state") == "checking":
+                return
+            self.update = {"state": "checking"}
+            self.rev += 1
+
+        def work():
+            try:
+                return updates.latest()
+            except Exception as exc:
+                self.log(f"Update check: {exc}")
+                return None
+
+        def done(found):
+            with self.lock:
+                if not found or not found["version"]:
+                    self.update = {"state": "error"}
+                elif updates.is_newer(found["version"]):
+                    self.update = {"state": "available", **found}
+                else:
+                    self.update = {"state": "latest", **found}
+                self.rev += 1
+        self.background(work, done, what="Update check", quiet=True)
+
+    def set_check_updates(self, enabled: bool):
+        self.check_updates = bool(enabled)
+        self.save()
+        self.changed()
         if startup.is_enabled():            # keep the Run entry pointing at this copy
             try:
                 startup.set_enabled(True)
@@ -215,11 +255,13 @@ class Controller:
             if not launched:
                 launched = True
                 self.resolve_lighting()
-            if now >= next_stage and self.connected:
+            # the DPI stage only matters on screen, so no stage reads while hidden:
+            # less traffic sharing the wireless link with your movement
+            if now >= next_stage and self.connected and self.ui_visible:
                 next_stage = now + STAGE_POLL_S
                 self._poll_active_stage()
             if now >= self._next_battery and self.connected:
-                self._next_battery = now + BATTERY_POLL_S
+                self._next_battery = now + (BATTERY_POLL_S if self.ui_visible else BATTERY_POLL_HIDDEN_S)
                 self.refresh_device_info()
             if self.fw["open"] and "flash" not in self.busy:
                 state = _cable_state()
@@ -262,7 +304,21 @@ class Controller:
             self.mouse.link.clear()            # quality is per connection
             self.firmware = None
             self._next_battery = 0.0
-            threading.Timer(0.4, lambda: self.read_settings(quiet=True)).start()
+            threading.Timer(0.4, self._sync_profile).start()
+            threading.Thread(target=self._check_official_app, daemon=True).start()
+
+    def _check_official_app(self):
+        """The official app grabs the mouse too, and first-time users often
+        still have it open. Say so once instead of letting things silently fail."""
+        if self._warned_official:
+            return
+        running = [n for n in dg.find_conflicts(sysinfo.running_process_names()) if n.lower().endswith(".exe")]
+        if running:
+            self._warned_official = True
+            self.notice("Close the Attack Shark app",
+                        f"{running[0].removesuffix('.exe')} is running. While it's open, Dorsal can't "
+                        "talk to your mouse properly.\n\nClose it (check the tray by the clock too), "
+                        "then Dorsal works normally.", kind="info")
 
     def polling_values(self) -> list[str]:
         """Up to 8000 Hz on the 2.4 GHz dongle, 1000 Hz over the cable."""
@@ -462,7 +518,7 @@ class Controller:
                         quiet=True, busy="stage")
 
     def set_setting(self, name: str, value):
-        """polling, lod, debounce, motion_sync, ripple, always_on."""
+        """polling, lod, debounce, motion_sync, ripple, angle_snap, sleep_min."""
         with self.lock:
             if name == "polling":
                 if str(value) not in self.polling_values():
@@ -474,8 +530,12 @@ class Controller:
                 self.lod = value
             elif name == "debounce":
                 self.debounce = max(0, min(20, int(value)))
-            elif name in ("motion_sync", "ripple", "always_on"):
+            elif name in ("motion_sync", "ripple", "angle_snap", "always_on"):
                 setattr(self, name, bool(value))
+            elif name == "sleep_min":
+                if int(value) not in p.SLEEP_CHOICES:
+                    raise ValueError(f"{value!r} isn't a sleep time the mouse has")
+                self.sleep_min = int(value)
             else:
                 raise ValueError(f"Unknown setting {name!r}")
             self.rev += 1
@@ -483,7 +543,19 @@ class Controller:
     def _device_snapshot(self):
         """Everything Apply writes, to tell whether there's anything to apply."""
         return (tuple(self.stage_dpis), tuple(self.stage_colors), self.polling, self.lod, self.debounce,
-                self.motion_sync, self.ripple, self.always_on, self.profile, self.color, self.brightness)
+                self.motion_sync, self.ripple, self.angle_snap, self.sleep_min, self.profile, self.color, self.brightness)
+
+    @property
+    def always_on(self) -> bool:
+        """The LED-patched firmware only stays lit while the mouse is awake."""
+        return self.sleep_min == 0
+
+    @always_on.setter
+    def always_on(self, on: bool):
+        self.sleep_min = 0 if on else (self.sleep_min or 5)
+
+    def sleep_seconds(self) -> int:
+        return p.SLEEP_NEVER if self.sleep_min == 0 else self.sleep_min * 60
 
     @property
     def dirty(self) -> bool:
@@ -494,9 +566,47 @@ class Controller:
             self.profile = max(1, min(3, int(n)))
             self.competitive = None
             self.rev += 1
-        if not self.profile_pending:
+        profile = self.profile
+
+        def done(ack):
+            # Dorsal used to only edit the chosen slot while the mouse kept
+            # running whatever profile it was on
+            if ack is not None and not ack.ok:
+                self.set_status(f"The mouse didn't switch to profile {profile}. Move it to wake it and try again.")
+            if not self.profile_pending:
+                self.read_settings(quiet=True)
+        if self.connected and not self.busy & {"flash", "apply", "studio"}:
+            def work():
+                try:
+                    return self.mouse.set_active_profile(profile)
+                except Exception as exc:
+                    self.log(f"Profile switch failed: {exc}")
+                    return None
+            self.background(work, done, what="Profile switch")
+        elif not self.profile_pending:
             self.read_settings(quiet=True)
         self.resolve_lighting()
+
+    def _sync_profile(self):
+        """On connect: follow the profile the mouse is actually running (it
+        can be changed by a button), unless there are edits waiting."""
+        if not self.connected or "flash" in self.busy:
+            return
+
+        def done(active):
+            if active and active != self.profile and not self.dirty:
+                with self.lock:
+                    self.profile = active
+                    self.competitive = None
+                    self.rev += 1
+                self.log(f"The mouse is on profile {active}; following it")
+            self.read_settings(quiet=True)
+        def work():
+            try:
+                return self.mouse.read_active_profile()
+            except Exception:
+                return None            # still read the settings below
+        self.background(work, done, what="Profile read", quiet=True)
 
     # reading
 
@@ -569,8 +679,10 @@ class Controller:
             # Brightness is deliberately NOT copied: the patched firmware reports 0
             # until the DPI button has been pressed, and copying that would dim the
             # LED on the next update. It's still shown by `dorsal read`.
+            if s.angle_snap is not None:
+                self.angle_snap = bool(s.angle_snap)
             if s.sleep_seconds is not None:
-                self.always_on = s.sleep_seconds == p.SLEEP_NEVER
+                self.sleep_min = 0 if s.sleep_seconds == p.SLEEP_NEVER else max(1, round(s.sleep_seconds / 60))
             if s.active_stage and 1 <= s.active_stage <= p.NUM_DPI_STAGES:
                 self.active_stage = s.active_stage
             self._applied = self._device_snapshot()
@@ -584,7 +696,7 @@ class Controller:
             return
         with self.lock:
             s = {"profile": self.profile, "rgb": dim(self.rgb, self.brightness), "brightness": 255,
-                 "always_on": self.always_on, "dpis": list(self.stage_dpis),
+                 "sleep_s": self.sleep_seconds(), "angle_snap": self.angle_snap, "dpis": list(self.stage_dpis),
                  "polling": p.POLLING_RATES.get(f"{self.polling} Hz", p.POLLING_RATES["1000 Hz"]),
                  "lod": p.LIFT_OFF_DISTANCES.get(self.lod, 1.0), "debounce": self.debounce,
                  "motion_sync": self.motion_sync, "ripple": self.ripple}
@@ -606,17 +718,20 @@ class Controller:
                 report.append((name, None, str(exc)))
 
         with self.mouse:
+            # settings go to profile `prof`; make sure that's the one the mouse runs
+            step("profile", p.active_profile(prof))
             step("DPI stages", p.stage_dpis(prof, [(v, v) for v in s["dpis"]]))
             step("polling", p.polling_rate(prof, s["polling"]))
             step("lift-off", p.lift_off_distance(prof, s["lod"]))
             step("debounce", p.debounce_time(prof, s["debounce"]))
             step("motion sync", p.motion_sync(prof, s["motion_sync"]))
             step("ripple", p.ripple_control(prof, s["ripple"]))
+            step("angle snap", p.angle_snap(prof, s["angle_snap"]))
             # The LED is the DPI indicator and shows the stage color, so the
             # chosen color goes into every stage slot (see R5Mouse.set_color).
             step("LED color", p.dpi_stage_colors(prof, [s["rgb"]] * p.NUM_DPI_STAGES))
             step("brightness", p.lightness(prof, s["brightness"], self.mouse.wired))
-            step("sleep", p.sleep_time(prof, p.SLEEP_NEVER if s["always_on"] else 300))
+            step("sleep", p.sleep_time(prof, s["sleep_s"]))
             step("light effect", p.light_effect(prof, p.MODE_STATIC, 0, s["rgb"]))
         return report
 
@@ -869,7 +984,10 @@ class Controller:
             self.debounce = int(settings["debounce"])
             self.motion_sync = bool(settings["motion_sync"])
             self.ripple = bool(settings["ripple"])
-            self.always_on = bool(settings["always_on"])
+            self.always_on = bool(settings.get("always_on", True))
+            if settings.get("sleep_min") is not None:
+                self.sleep_min = int(settings["sleep_min"])
+            self.angle_snap = bool(settings.get("angle_snap", False))
             self.color = settings["last_color"].upper()
             self.rgb = p.hex_to_rgb(self.color)
             self.brightness = int(settings["brightness"])
@@ -903,7 +1021,7 @@ class Controller:
         expected = {"polling": f"{self.polling} Hz", "stage_dpis": [(v, v) for v in self.stage_dpis],
                     "active_stage": self.active_stage, "lod": p.LIFT_OFF_DISTANCES.get(self.lod),
                     "debounce": self.debounce, "motion_sync": self.motion_sync, "ripple": self.ripple,
-                    "competitive": self.competitive}
+                    "angle_snap": self.angle_snap, "competitive": self.competitive}
         self.set_status("Diagnostics: reading device state and timing 30 read commands…")
 
         def work():
@@ -946,9 +1064,10 @@ class Controller:
                     f"{battery.percent}% · {'charging' if battery.charging else 'on battery'}" if battery and not battery.asleep else "No usable charge reading; wake the mouse and repeat."))
                 session["settings"] = dg.settings_evidence(settings, expected)
                 read = sum(r["actual"] is not None for r in session["settings"])
+                fields = len(session["settings"])
                 differences = sum(r["status"] == "different" for r in session["settings"])
-                checks.append(dg.Check("ok" if read == 8 and not differences else "warn", "Settings readback",
-                    f"{read}/8 fields read; {differences} differ from the editor. Differences may be unapplied edits. See the comparison below."))
+                checks.append(dg.Check("ok" if read == fields and not differences else "warn", "Settings readback",
+                    f"{read}/{fields} fields read; {differences} differ from the editor. Differences may be unapplied edits. See the comparison below."))
             session.update({"finished_at": datetime.now(timezone.utc).isoformat(),
                             "duration_s": round(time.monotonic() - started, 3), "details": details,
                             "checks": [vars(c) for c in checks]})
@@ -1409,7 +1528,8 @@ class Controller:
         with self.lock:
             self.cfg.update({
                 "last_color": self.color, "brightness": self.brightness, "profile": self.profile,
-                "always_on": self.always_on, "close_to_tray": self.close_to_tray,
+                "always_on": self.always_on, "sleep_min": self.sleep_min, "angle_snap": self.angle_snap,
+                "close_to_tray": self.close_to_tray, "check_updates": self.check_updates,
                 "stage_dpis": list(self.stage_dpis), "stage_colors": list(self.stage_colors),
                 "polling": f"{self.polling} Hz", "lod": self.lod, "debounce": self.debounce,
                 "motion_sync": self.motion_sync, "ripple": self.ripple,
@@ -1453,7 +1573,8 @@ class Controller:
                 "lod": self.lod, "lod_values": list(p.LIFT_OFF_DISTANCES),
                 "debounce": self.debounce, "motion_sync": self.motion_sync, "ripple": self.ripple,
                 "competitive": self.competitive,
-                "always_on": self.always_on, "dirty": self.dirty, "profile_pending": self.profile_pending,
+                "always_on": self.always_on, "sleep_min": self.sleep_min, "sleep_choices": list(p.SLEEP_CHOICES),
+                "angle_snap": self.angle_snap, "dirty": self.dirty, "profile_pending": self.profile_pending,
                 "status": self.status, "busy": sorted(self.busy),
                 "apply_flash": None if flash is None else {"text": flash[0], "tone": flash[1]},
                 "bindings": self.bindings_view(), "actions": list(ACTIONS),
@@ -1467,7 +1588,8 @@ class Controller:
                 "firmware_installer": self.firmware_view(),
                 "notices": list(self.notices), "slot_read": self.slot_read,
                 "settings": {"startup": startup.is_enabled(), "close_to_tray": self.close_to_tray,
-                             "theme": self.theme},
+                             "theme": self.theme, "check_updates": self.check_updates},
+                "update": dict(self.update),
             }
 
     def take_notice(self, notice_id):

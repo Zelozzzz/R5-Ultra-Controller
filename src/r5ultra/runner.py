@@ -72,29 +72,44 @@ class EffectRunner:
     def _loop(self, key: str, generator: Iterator[Frame], stop: threading.Event):
         prepared = False
         offline = False
-        for rgb, hold in generator:
-            if stop.is_set():
-                return
-            try:
-                profile = self.profile()
-                if not prepared:
-                    self._prepare(profile)
-                    prepared = True
-                self.mouse.push_color(profile, dim(rgb, self.brightness()))
-            except (OSError, ValueError) as exc:   # hidapi raises both
-                # Usually the dongle went to sleep or re-enumerated. Back off
-                # and retry; brightness is re-sent once it's back.
-                if not offline:
-                    self.log(f"Effect {key}: mouse unavailable ({exc}); will resume when it's back")
-                    offline = True
-                self.mouse.reset()
-                prepared = False
-                if stop.wait(self.RETRY_SECONDS):
+        held = False                      # our own open handle on the mouse
+        last = None                       # color the mouse already shows
+        try:
+            for rgb, hold in generator:
+                if stop.is_set():
                     return
-                continue
-            self.on_frame(rgb)
-            if offline:
-                self.log(f"Effect {key}: mouse is back")
-                offline = False
-            if stop.wait(max(0.0, hold)):
-                return
+                try:
+                    profile = self.profile()
+                    color = dim(rgb, self.brightness())
+                    if not prepared:
+                        self._prepare(profile)
+                        if not held:
+                            # keep the handle for the whole effect: reopening
+                            # it costs ~16 ms a frame
+                            self.mouse.__enter__()
+                            held = True
+                        self.mouse.push_color(profile, color, set_mode=True)
+                        prepared, last = True, color
+                    elif color != last:       # holds and slow fades repeat colors; don't resend them
+                        self.mouse.push_color(profile, color, set_mode=False)
+                        last = color
+                except (OSError, ValueError) as exc:   # hidapi raises both
+                    # Usually the dongle went to sleep or re-enumerated. Back off
+                    # and retry; brightness is re-sent once it's back.
+                    if not offline:
+                        self.log(f"Effect {key}: mouse unavailable ({exc}); will resume when it's back")
+                        offline = True
+                    self.mouse.reset()            # also drops the handle we held
+                    held = prepared = False
+                    if stop.wait(self.RETRY_SECONDS):
+                        return
+                    continue
+                self.on_frame(rgb)
+                if offline:
+                    self.log(f"Effect {key}: mouse is back")
+                    offline = False
+                if stop.wait(max(0.0, hold)):
+                    return
+        finally:
+            if held:
+                self.mouse.__exit__(None, None, None)

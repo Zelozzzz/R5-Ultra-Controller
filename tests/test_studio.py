@@ -250,3 +250,11 @@ def test_profile_invalid_settings_rejected(field, value):
     settings[field] = value
     with pytest.raises(ValueError):
         profile_document("Invalid", settings)
+
+
+def test_profiles_keep_sleep_and_angle_snap_when_present():
+    settings = copy.deepcopy(config.DEFAULTS)
+    assert "sleep_min" not in profile_document("Old", settings)["settings"]    # None isn't kept
+    settings.update(sleep_min=10, angle_snap=True)
+    kept = profile_document("New", settings)["settings"]
+    assert kept["sleep_min"] == 10 and kept["angle_snap"] is True

@@ -5,9 +5,9 @@ Control app for the Attack Shark R5 Ultra, plus a small firmware patch that make
 [![tests](https://github.com/Zelozzzz/R5-Ultra-Controller/actions/workflows/tests.yml/badge.svg)](https://github.com/Zelozzzz/R5-Ultra-Controller/actions/workflows/tests.yml)
 [![release](https://img.shields.io/github/v/release/Zelozzzz/R5-Ultra-Controller)](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest)
 
-<img src="docs/screenshots/overview.webp" alt="Dorsal home page with the mouse cycling colors" width="900">
+<img src="docs/screenshots/overview.webp" alt="A tour of Dorsal: home, buttons, macros, profiles, diagnostics and settings" width="900">
 
-**[Download the latest release](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest)**
+**[Download Dorsal for Windows](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest/download/Dorsal-Setup.exe)**
 
 ## why i made this
 
@@ -36,10 +36,14 @@ So I dug the USB protocol out of their app, found the one spot in the firmware t
 
 ## install
 
-1. Grab `Dorsal-Setup-<version>.exe` from [Releases](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest) and run it. It installs just for your user, no admin needed. Then search Start for **Dorsal** (or "Attack Shark" / "R5 Ultra").
-   Don't want an installer? Get the portable zip, unzip it anywhere, run `Dorsal.exe`.
-2. Close the official Attack Shark software if it's open. Both can't talk to the mouse at once.
-3. Plug in the dongle and open Dorsal.
+1. [Download Dorsal-Setup.exe](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest/download/Dorsal-Setup.exe) and open it.
+2. Windows will probably say **"Windows protected your PC"**. That's only because the app isn't signed (signing costs money every year). Click **More info**, then **Run anyway**.
+3. Click **Install**, then **Finish**. It installs just for you, no admin needed, and Dorsal opens.
+4. Plug in the dongle. If the official Attack Shark app is open, close it (check the tray by the clock too), both can't talk to the mouse at once. Dorsal tells you if it's still running.
+
+That's it. For the LED to stay on you also need the firmware patch, see [installing the firmware](#installing-the-firmware).
+
+Don't want an installer? Grab the portable zip from [Releases](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest), unzip it anywhere and run `Dorsal.exe`.
 
 Settings are saved in `%APPDATA%\Dorsal`. Uninstall from Windows Settings > Apps.
 

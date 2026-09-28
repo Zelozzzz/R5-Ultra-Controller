@@ -147,14 +147,14 @@
 
   <!-- ═══ BUTTONS ═══ -->
   <section class="page" id="page-buttons">
-    <div class="assign-layout">
-      <nav class="glass pane assign-cats">
-        <div class="pane-head"><h3 class="pane-title"><span class="muted">Button</span> <span id="assign-button">Back</span></h3></div>
+    <div class="glass workspace assign-layout">
+      <nav class="pane sidebar assign-cats">
+        <div class="pane-head"><h3 class="side-title">Action</h3></div>
         <div class="pane-body cat-list" id="assign-cats"></div>
       </nav>
-      <div class="glass pane assign-panel">
+      <div class="pane assign-panel">
         <div class="pane-head">
-          <h3 class="pane-title" id="assign-title">Default</h3><span class="grow"></span>
+          <h3 class="pane-title"><span id="assign-button">Back</span><span class="crumb"></span><span id="assign-title">Default</span></h3><span class="grow"></span>
           <span class="assign-now" id="assign-now"></span>
         </div>
         <div class="pane-body assign-body" id="assign-body"></div>
@@ -164,7 +164,7 @@
           <button class="btn primary" id="assign-save">Save to mouse</button>
         </div>
       </div>
-      <div class="glass pane assign-mouse">
+      <div class="pane assign-mouse">
         <div class="pane-head">
           <h3 class="pane-title">Pick a button</h3><span class="grow"></span>
           <button class="btn quiet sm" id="binding-read">Read from mouse</button>
@@ -182,10 +182,10 @@
 
   <!-- ═══ MACROS ═══ -->
   <section class="page" id="page-macros">
-    <div class="macro-layout">
-      <aside class="glass pane macro-sidebar">
+    <div class="glass workspace macro-layout">
+      <aside class="pane sidebar macro-sidebar">
         <div class="pane-head">
-          <h3 class="pane-title">Macros</h3><span class="grow"></span>
+          <h3 class="side-title">Macros</h3><span class="grow"></span>
           <button class="btn sm" id="macro-new"><svg class="ic sm"><use href="#i-plus"/></svg>New</button>
         </div>
         <div class="pane-body list-body">
@@ -200,7 +200,7 @@
           <button class="btn quiet sm danger" id="macro-delete">Delete</button>
         </div>
       </aside>
-      <div class="glass pane" id="macro-editor">
+      <div class="pane" id="macro-editor">
         <div class="pane-head">
           <input class="input title-input" id="macro-name" spellcheck="false" value="Untitled macro" aria-label="Macro name">
           <span class="grow"></span>
@@ -234,26 +234,34 @@
 
   <!-- ═══ PROFILES ═══ -->
   <section class="page" id="page-profiles">
-    <div class="profiles-layout">
-      <aside class="glass pane">
+    <div class="glass workspace profiles-layout">
+      <aside class="pane sidebar">
         <div class="pane-head">
-          <h3 class="pane-title">Setups <span class="count" id="profile-count"></span></h3><span class="grow"></span>
-          <button class="btn quiet sm" id="profile-import">Import</button>
+          <h3 class="side-title">Setups <span class="count" id="profile-count"></span></h3>
         </div>
         <div class="pane-body list-body" id="profile-cards"></div>
+        <div class="pane-foot">
+          <button class="btn quiet sm" id="profile-import">Import</button><span class="grow"></span>
+          <button class="btn quiet sm" id="dock-read">Read from mouse</button>
+        </div>
       </aside>
-      <div class="glass pane setup-detail" id="setup-detail"></div>
+      <div class="pane setup-detail" id="setup-detail"></div>
     </div>
   </section>
 
   <!-- ═══ DIAGNOSTICS ═══ -->
   <section class="page" id="page-diagnostics">
-    <div class="glass pane diag">
-      <div class="pane-head tabs-head">
-        <nav class="pane-tabs" id="diag-tabs">
-          <button data-view="overview">Overview</button><button data-view="connection">Connection</button>
-          <button data-view="input">Live input</button><button data-view="traffic">HID traffic</button>
-        </nav>
+    <div class="glass workspace diag-layout">
+      <nav class="pane sidebar side-nav" id="diag-tabs">
+        <div class="pane-head"><h3 class="side-title">Diagnostics</h3></div>
+        <button data-view="overview"><svg class="ic sm"><use href="#i-gauge"/></svg>Overview</button>
+        <button data-view="connection"><svg class="ic sm"><use href="#i-sync"/></svg>Connection</button>
+        <button data-view="input"><svg class="ic sm"><use href="#i-mouse"/></svg>Live input</button>
+        <button data-view="traffic"><svg class="ic sm"><use href="#i-layers"/></svg>HID traffic</button>
+      </nav>
+    <div class="pane diag">
+      <div class="pane-head">
+        <h3 class="pane-title" id="diag-title">Overview</h3>
         <span class="grow"></span>
         <button class="btn quiet sm" id="report-copy">Copy report</button>
         <button class="btn quiet sm" id="session-export">Export session…</button>
@@ -353,12 +361,14 @@
         </div>
       </div>
     </div>
+    </div>
   </section>
 
   <!-- ═══ SETTINGS ═══ -->
   <section class="page" id="page-settings">
-    <div class="glass pane settings-pane">
-      <nav class="settings-nav" id="settings-nav">
+    <div class="glass workspace settings-pane">
+      <nav class="pane sidebar side-nav settings-nav" id="settings-nav">
+        <div class="pane-head"><h3 class="side-title">Settings</h3></div>
         <button data-view="general"><svg class="ic sm"><use href="#i-palette"/></svg>General</button>
         <button data-view="mouse"><svg class="ic sm"><use href="#i-mouse"/></svg>Mouse</button>
         <button data-view="log"><svg class="ic sm"><use href="#i-tray"/></svg>Log</button>
@@ -377,6 +387,15 @@
               <span class="stext"><b>Theme</b><small>Switches instantly.</small></span>
               <div class="segmented" id="theme-seg"><button data-theme="ember">Ember</button><button data-theme="aura">Aura</button><button data-theme="ocean">Ocean</button></div></div>
           </div>
+          <h3 class="sec-title sub-title">About</h3>
+          <div class="block group">
+            <div class="srow"><span class="sicon accent"><svg class="ic"><use href="#i-sync"/></svg></span>
+              <span class="stext"><b>Dorsal <span id="version"></span></b><small id="update-text">Not checked yet.</small></span>
+              <button class="btn" id="update-btn">Check for updates</button></div>
+            <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-power"/></svg></span>
+              <span class="stext"><b>Check for updates at startup</b><small>Asks GitHub once when Dorsal opens. Nothing about your PC or mouse is sent.</small></span>
+              <span class="switch"><input type="checkbox" id="set-updates"><span></span></span></label>
+          </div>
         </div>
         <div class="sec" data-view="mouse" hidden>
           <h3 class="sec-title">Mouse</h3>
@@ -388,6 +407,12 @@
             <div class="srow"><span class="sicon accent"><svg class="ic"><use href="#i-chip"/></svg></span>
               <span class="stext"><b>Dorsal firmware</b><small>Always-on RGB LED. Built from your copy of the official software and installed over the USB cable.</small></span>
               <span class="sactions"><button class="btn quiet" id="fw-doc">How it works</button><button class="btn primary" id="fw-open">Install…</button></span></div>
+            <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-arrow"/></svg></span>
+              <span class="stext"><b>Angle snap</b><small>Straightens your lines. Keep it off for aiming. Apply to send.</small></span>
+              <span class="switch"><input type="checkbox" id="set-angle"><span></span></span></label>
+            <div class="srow"><span class="sicon"><svg class="ic"><use href="#i-power"/></svg></span>
+              <span class="stext"><b>Sleep after</b><small>Never keeps the LED lit. Shorter saves battery. Apply to send.</small></span>
+              <div class="segmented" id="sleep-seg"></div></div>
             <div class="srow"><span class="sicon"><svg class="ic"><use href="#i-reset"/></svg></span>
               <span class="stext"><b>Reset profile on mouse</b><small>Puts the active onboard profile back to factory settings.</small></span>
               <button class="btn danger" id="profile-reset">Reset…</button></div>
@@ -407,10 +432,8 @@
   <div class="dock" id="dock">
     <span class="status" id="status" role="status" aria-live="polite"></span>
     <span class="grow"></span>
-    <button class="btn" id="dock-read" hidden>Read from mouse</button>
     <button class="btn apply primary" id="apply" hidden>Apply</button>
   </div>
-  <span class="version" id="version"></span>
 </footer>
 
 <div id="scrim" hidden></div>
