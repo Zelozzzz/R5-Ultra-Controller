@@ -1,0 +1,6 @@
+hidapi>=0.14
+intelhex>=2.3
+pystray>=0.19
+Pillow>=10.0
+pywebview>=5.0
+customtkinter>=5.2,<7

@@ -1,0 +1,35 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Settings from v1 (Dorsal keeps settings in %APPDATA%\Dorsal)
+r5_config.json
+
+# Firmware is built locally from YOUR copy of the official app and never
+# committed: it's Attack Shark's code, not ours to redistribute.
+firmware/*.hex
+firmware/*.bin
+*.asar
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows junk
+Thumbs.db
+desktop.ini
+
+# Local virtualenvs
+.venv/
+venv/
+env/
+
+# Build artifacts
+dist/
+build/
+*.spec
+!packaging/dorsal.spec

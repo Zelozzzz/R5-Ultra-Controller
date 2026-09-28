@@ -1,0 +1,67 @@
+name: release
+
+# Push a tag like v1.5 and GitHub builds Dorsal, its installer and a
+# portable zip, and attaches them to a Release. Can also be run by hand
+# (Actions > release > Run workflow) to get the files as build artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller pytest pyflakes
+      - name: Test
+        run: |
+          python -m pyflakes src tests
+          python -m pytest -q
+      - name: Check release version
+        shell: pwsh
+        run: |
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import r5ultra; print(r5ultra.__version__)"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Release tag must match package version v$version"
+          }
+      - name: Build the app
+        run: python packaging/build.py
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import r5ultra; print(r5ultra.__version__)"
+          iscc "/DAppVersion=$version" packaging\installer.iss
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/Dorsal-Setup-*.exe, dist/Dorsal-*-portable.zip |
+            Sort-Object Name | ForEach-Object {
+              $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Dorsal
+          path: |
+            dist/Dorsal-Setup-*.exe
+            dist/Dorsal-*-portable.zip
+            dist/SHA256SUMS.txt
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Dorsal ${{ github.ref_name }}
+          body_path: docs/RELEASE_NOTES.md
+          files: |
+            dist/Dorsal-Setup-*.exe
+            dist/Dorsal-*-portable.zip
+            dist/SHA256SUMS.txt
