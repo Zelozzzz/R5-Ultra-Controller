@@ -19,7 +19,7 @@ So I dug the USB protocol out of their app, found the one spot in the firmware t
 
 - **RGB that stays on.** With the firmware patch the LED stays lit and Dorsal sends it colors. Static color, Breathe, Spectrum or Aurora. The mouse on screen lights up the same color.
 - **Firmware installer built in.** Builds the patch from your own copy of the official software, checks it (SHA-256) before and after, and can put the original back whenever.
-- **All the normal settings.** 6 DPI stages (100 to 42,000), polling up to 8000 Hz, lift-off, debounce, motion sync, ripple control, Competitive Mode. Everything gets read back from the mouse after it's written so you know it actually stuck.
+- **All the normal settings.** 6 DPI stages (100 to 42,000), polling up to 8000 Hz, lift-off, debounce, motion sync, ripple control, Competitive Mode. Save to mouse verifies eight performance/sleep fields through fresh readback; lighting commands are acknowledged separately. Competitive Mode has its own readback.
 - **Macros and button remapping.** Saved on the mouse itself, so they work even with Dorsal closed or on another PC.
 - **Profiles.** Save setups per game, share them as .json, or start from a preset.
 - **Diagnostics.** Health check, live HID traffic, a reliability test, battery drain / time left, and a live polling rate + speed + click test.

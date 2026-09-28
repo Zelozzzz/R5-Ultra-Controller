@@ -1,16 +1,4 @@
-"""
-Things that make Dorsal behave like a proper Windows app.
-
-- Frozen or not: when built with PyInstaller, files live next to the .exe (and
-  bundled resources in sys._MEIPASS) instead of in the source tree.
-- Single instance: a named mutex tells a second launch that Dorsal is already
-  running; it then sets a named event, which the running copy is waiting on,
-  and exits. The running copy shows its window (even from the tray). A copy
-  using a different settings folder (a test run, a second setup) gets its own
-  names, so it can never answer for the normal copy, or the other way round.
-- Taskbar identity: an explicit AppUserModelID so Windows groups Dorsal's
-  windows under its own icon instead of python.exe's.
-"""
+"""Single instance, taskbar id, finding bundled files."""
 
 from __future__ import annotations
 
@@ -25,7 +13,7 @@ from typing import Callable
 from . import APP_ID
 
 IS_WINDOWS = sys.platform == "win32"
-MUTEX_NAME = f"{APP_ID}.SingleInstance"      # also named in the installer (AppMutex)
+MUTEX_NAME = f"{APP_ID}.SingleInstance"
 SHOW_EVENT = f"{APP_ID}.ShowWindow"
 ERROR_ALREADY_EXISTS = 183
 
@@ -35,7 +23,6 @@ def is_frozen() -> bool:
 
 
 def resource_root() -> Path:
-    """Where bundled read-only files (docs) are: the PyInstaller bundle, or the repo."""
     if is_frozen():
         return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
     return Path(__file__).resolve().parent.parent.parent
@@ -50,20 +37,17 @@ def set_app_id():
 
 
 def wait_for_exit(pid: int, timeout: float = 10.0) -> None:
-    """Block until process `pid` has exited (or `timeout` passes)."""
     if not IS_WINDOWS:
         return
     k32 = ctypes.windll.kernel32
     k32.OpenProcess.restype = ctypes.c_void_p
-    handle = k32.OpenProcess(0x00100000, False, pid)          # SYNCHRONIZE
+    handle = k32.OpenProcess(0x00100000, False, pid)
     if handle:
         k32.WaitForSingleObject(ctypes.c_void_p(handle), int(timeout * 1000))
         k32.CloseHandle(ctypes.c_void_p(handle))
 
 
 def instance_names(environ=None) -> tuple[str, str]:
-    """(mutex, event) names. The normal settings folder keeps the plain names
-    (the installer checks MUTEX_NAME); any other folder adds a short hash of it."""
     env = os.environ if environ is None else environ
     appdata = os.path.normcase(os.path.normpath(env.get("APPDATA", "")))
     normal = os.path.normcase(os.path.normpath(os.path.join(env.get("USERPROFILE", ""), "AppData", "Roaming")))
@@ -74,8 +58,6 @@ def instance_names(environ=None) -> tuple[str, str]:
 
 
 class SingleInstance:
-    """`acquired` is False when another Dorsal is already running (in which
-    case that copy has already been asked to show itself)."""
 
     def __init__(self):
         self.acquired = True
@@ -97,8 +79,6 @@ class SingleInstance:
         self._event = k32.CreateEventW(None, False, False, event_name)
 
     def on_show_request(self, callback: Callable[[], None]):
-        """Call `callback` (from a background thread) whenever another launch
-        asks this copy to show itself."""
         if not self._event:
             return
 

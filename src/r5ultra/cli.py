@@ -1,20 +1,4 @@
-"""
-Command-line interface: script the mouse without opening the GUI.
-
-    dorsal status
-    dorsal color FF8800 --brightness 200
-    dorsal effect aurora --seconds 30
-    dorsal effects
-    dorsal dpi 400 800 1600 3200 6400 12800
-    dorsal read-dpi
-    dorsal firmware info  <app.asar | file.hex>
-    dorsal firmware patch <app.asar | stock.hex> [-o firmware/r5_patched.hex]
-    dorsal firmware flash <file.hex>
-    dorsal firmware wizard
-
-Close the GUI (or at least stop its effect) before using commands that
-change lighting, or the two will fight over the LED.
-"""
+"""Command line, for scripting the mouse without the window."""
 
 from __future__ import annotations
 
@@ -92,7 +76,7 @@ def cmd_color(args) -> int:
     from .device import R5Mouse
     rgb = p.hex_to_rgb(args.hex)
     mouse = R5Mouse()
-    with mouse:              # the LED shows the stage color, so set_color writes both
+    with mouse:
         mouse.set_color(args.profile, dim(rgb, args.brightness), 255)
     print(f"LED set to {p.rgb_to_hex(rgb)} at brightness {args.brightness}")
     return _report(mouse.last_ack)
@@ -246,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (OSError, ValueError) as exc:          # includes DeviceNotFound, bad hex colors
+    except (OSError, ValueError) as exc:
         print(f"Error: {exc}")
         return 1
     except Exception as exc:

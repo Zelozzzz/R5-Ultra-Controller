@@ -1,5 +1,4 @@
-"""Dorsal's command line from the source tree. Usage: python src/dorsal_cli.py --help
-(or dorsal.bat --help). The installed app ships this as dorsal-cli.exe."""
+"""The command line from source: python src/dorsal_cli.py --help (installed it's dorsal-cli.exe)"""
 
 import sys
 from pathlib import Path

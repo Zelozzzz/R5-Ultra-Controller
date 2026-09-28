@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10
+
+- Save to mouse now reads back eight performance/sleep fields before marking the
+  configuration verified. Missing or different values keep changes pending;
+  lighting is explicitly described as acknowledged, not independently verified.
+- Compact pending-change review and actionable save results, with onboard profile
+  labels and protection against switching profiles during a save.
+- Guided diagnostic navigation, timed input capture, clear inspection outcomes and
+  a comparison with the previous inspection on the same profile/connection type.
+- DPI/profile/connection changes invalidate capture comparisons and speed estimates.
+- Keyboard control for polling, lift-off and mouse assignments; clearer macro save
+  state and explicit app-required versus static onboard lighting labels.
+
 ## 1.9
 
 - Pages besides Home are one window each with the same sidebar and header.

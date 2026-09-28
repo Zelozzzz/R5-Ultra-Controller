@@ -1,5 +1,4 @@
-"""Runs the firmware wizard from the source tree (flash.bat uses this).
-The wizard itself lives in r5ultra/wizard.py."""
+"""The console firmware wizard, from source."""
 
 import sys
 from pathlib import Path

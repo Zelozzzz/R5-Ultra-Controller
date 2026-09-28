@@ -1,15 +1,4 @@
-"""
-Raw mouse input from Windows, for the polling-rate, speed and click tests.
-
-Windows' Raw Input API delivers device-specific movement and button events
-before pointer acceleration. Arrival times include queueing and scheduling;
-events may be coalesced, so they are not hardware USB timestamps.
-We create a hidden message-only window on a background thread, register it
-for mouse input (even while Dorsal isn't focused), and pass each report from
-the R5 Ultra (matched by its USB vendor ID) to a callback.
-
-Windows only; everything is done with ctypes.
-"""
+"""Raw mouse input from windows, for the live input test."""
 
 from __future__ import annotations
 
@@ -28,7 +17,6 @@ HWND_MESSAGE = wintypes.HWND(-3)
 VENDOR_TAG = f"VID_{R5_VID:04X}"
 PRODUCT_TAGS = tuple(f"PID_{pid:04X}" for pid in R5_PIDS)
 
-# usButtonFlags bits -> (button name, pressed?)
 BUTTON_FLAGS = {
     0x0001: ("Left", True), 0x0002: ("Left", False),
     0x0004: ("Right", True), 0x0008: ("Right", False),
@@ -49,8 +37,6 @@ class RAWINPUTHEADER(ctypes.Structure):
 
 
 class RAWMOUSE(ctypes.Structure):
-    # In C, the button fields sit in a union aligned to 4 bytes, so there are
-    # 2 bytes of padding after usFlags. Without _pad every field after it is off.
     _fields_ = [("usFlags", wintypes.USHORT), ("_pad", wintypes.USHORT), ("usButtonFlags", wintypes.USHORT),
                 ("usButtonData", wintypes.USHORT), ("ulRawButtons", wintypes.ULONG),
                 ("lLastX", wintypes.LONG), ("lLastY", wintypes.LONG),
@@ -71,14 +57,10 @@ class WNDCLASSW(ctypes.Structure):
                 ("lpszMenuName", wintypes.LPCWSTR), ("lpszClassName", wintypes.LPCWSTR)]
 
 
-# Event = (time in seconds, dx, dy, [(button, pressed), ...])
 Callback = Callable[[float, int, int, list], None]
 
 
 class RawMouseListener:
-    """start() begins delivering R5 Ultra reports to `callback` (on a
-    background thread); stop() ends it. `other_mice` counts reports from
-    other mice, so the UI can tell you to move the right one."""
 
     def __init__(self, callback: Callback):
         self.callback = callback
@@ -88,8 +70,6 @@ class RawMouseListener:
         self._hwnd = None
         self._ready = threading.Event()
         self.error: str | None = None
-
-    # public
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -109,8 +89,6 @@ class RawMouseListener:
             self._thread.join(1.0)
         self._thread = None
 
-    # internals
-
     def _is_r5(self, handle) -> bool:
         key = int(handle or 0)
         if key not in self._names:
@@ -125,8 +103,6 @@ class RawMouseListener:
 
     def _run(self):
         u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
-        # ctypes defaults to 32-bit integer returns. HWND/HINSTANCE and LRESULT
-        # must keep their full width on 64-bit Windows.
         k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
         k32.GetModuleHandleW.restype = wintypes.HMODULE
         u32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
@@ -162,7 +138,6 @@ class RawMouseListener:
                         m = raw.mouse
                         buttons = [v for bit, v in BUTTON_FLAGS.items() if m.usButtonFlags & bit]
                         try:
-                            # Absolute coordinates are not relative sensor counts.
                             self.callback(t, 0 if m.usFlags & 1 else m.lLastX,
                                           0 if m.usFlags & 1 else m.lLastY, buttons)
                         except Exception:
@@ -177,7 +152,7 @@ class RawMouseListener:
                 return 0
             return u32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
-        self._wndproc = WNDPROC(wndproc)            # keep a reference: ctypes callbacks must stay alive
+        self._wndproc = WNDPROC(wndproc)
         cls = WNDCLASSW(lpfnWndProc=self._wndproc, hInstance=k32.GetModuleHandleW(None),
                         lpszClassName=f"DorsalRawInput{id(self)}")
         if not u32.RegisterClassW(ctypes.byref(cls)):
@@ -191,7 +166,7 @@ class RawMouseListener:
             u32.UnregisterClassW(cls.lpszClassName, cls.hInstance)
             self._ready.set()
             return
-        device = RAWINPUTDEVICE(0x01, 0x02, RIDEV_INPUTSINK, self._hwnd)     # generic desktop / mouse
+        device = RAWINPUTDEVICE(0x01, 0x02, RIDEV_INPUTSINK, self._hwnd)
         if not u32.RegisterRawInputDevices(ctypes.byref(device), 1, ctypes.sizeof(device)):
             self.error = "Windows refused raw mouse input."
             u32.DestroyWindow(self._hwnd)

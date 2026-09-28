@@ -1,7 +1,4 @@
-"""
-Pillow-painted scenery shared by every front end: the window backdrop and
-the lit R5 Ultra. Nothing here imports a UI toolkit.
-"""
+"""The backdrop pictures and the lit mouse layers."""
 
 from __future__ import annotations
 
@@ -21,9 +18,6 @@ def _blur(img, radius):
 
 
 def backdrop(w: int, h: int, theme_name: str | None = None, seed: int = 11) -> Image.Image:
-    """The window's backdrop in a theme (theme.py; default: the active one): a
-    dark gradient, soft light from above, broad color currents, a glow from
-    below and particles. Rendered at half size (it's all soft) then scaled."""
     from . import theme
     spec = theme.get(theme_name)
     t = spec["backdrop"]
@@ -61,8 +55,6 @@ def backdrop(w: int, h: int, theme_name: str | None = None, seed: int = 11) -> I
     fd.ellipse((bw * 0.62, bh * 0.82, bw * 1.25, bh * 1.30), fill=120)
     light(_blur(floor, bw * 0.08), accent, t["floor"])
 
-    # Broad underwater color currents make transmission and lens distortion
-    # visible through the glass without placing texture behind small text.
     for box, color in t["currents"]:
         glow = Image.new("L", (bw, bh), 0)
         ImageDraw.Draw(glow).ellipse(tuple(v * (bw if i % 2 == 0 else bh) for i, v in enumerate(box)), fill=145)
@@ -71,7 +63,6 @@ def backdrop(w: int, h: int, theme_name: str | None = None, seed: int = 11) -> I
     specks = Image.new("L", (bw, bh), 0)
     sd = ImageDraw.Draw(specks)
     for _ in range(90):
-        # Ocean: bubbles drift near the top. Ember: embers gather low and rise.
         y = bh * (1 - rnd.random() ** 1.6) if t["rising"] else bh * (rnd.random() ** 0.7)
         x = bw * rnd.random()
         r = bw * (0.0012 + 0.0035 * rnd.random() ** 4)
@@ -89,7 +80,6 @@ def backdrop(w: int, h: int, theme_name: str | None = None, seed: int = 11) -> I
 
 
 def _aurora(w: int, h: int) -> Image.Image:
-    """Quiet northern-light curtains, painted once and cached by the front end."""
     bw, bh = max(8, w // 2), max(8, h // 2)
     img = Image.new("RGB", (bw, bh), (3, 7, 6))
     for phase, color, strength in ((0, (49, 135, 82), 1.5),
@@ -113,10 +103,6 @@ def _aurora(w: int, h: int) -> Image.Image:
 
 
 def caustic_tile(size: int = 256, cells: int = 22, seed: int = 5) -> Image.Image:
-    """A seamless tile of underwater caustics: the bright network where light
-    focused by surface ripples meets the floor. Bright along the borders of
-    Voronoi cells (where the two nearest points are almost equally near), with
-    distances measured around the tile's edges so it repeats without a seam."""
     rnd = random.Random(seed)
     points = [(rnd.random() * size, rnd.random() * size) for _ in range(cells)]
     img = Image.new("L", (size, size))
@@ -124,8 +110,6 @@ def caustic_tile(size: int = 256, cells: int = 22, seed: int = 5) -> Image.Image
     tau, amp = 2 * math.pi / size, size * .035
     for y0 in range(size):
         for x0 in range(size):
-            # Bend the space with waves that repeat once per tile, so the
-            # network curves like light through ripples and still tiles.
             x = (x0 + amp * math.sin(tau * 2 * y0 + 1.3) + amp * .6 * math.sin(tau * 3 * (x0 + y0))) % size
             y = (y0 + amp * math.sin(tau * 3 * x0 + .4) + amp * .6 * math.sin(tau * 2 * (x0 - y0))) % size
             d1 = d2 = 1e9
@@ -145,7 +129,6 @@ def caustic_tile(size: int = 256, cells: int = 22, seed: int = 5) -> Image.Image
 
 
 def snow_tile(size: int = 512, count: int = 46, radius: tuple = (0.8, 2.4), seed: int = 3) -> Image.Image:
-    """A seamless tile of marine snow: soft specks drifting in the water."""
     rnd = random.Random(seed)
     alpha = Image.new("L", (size, size))
     d = ImageDraw.Draw(alpha)
@@ -153,7 +136,7 @@ def snow_tile(size: int = 512, count: int = 46, radius: tuple = (0.8, 2.4), seed
         x, y = rnd.random() * size, rnd.random() * size
         r = radius[0] + (radius[1] - radius[0]) * rnd.random() ** 2
         value = int(90 + 165 * rnd.random())
-        for ox in (-size, 0, size):             # drawn around the edges so the tile repeats cleanly
+        for ox in (-size, 0, size):
             for oy in (-size, 0, size):
                 d.ellipse((x + ox - r, y + oy - r, x + ox + r, y + oy + r), fill=value)
     alpha = alpha.filter(ImageFilter.GaussianBlur(radius[1] * .45))
@@ -162,11 +145,6 @@ def snow_tile(size: int = 512, count: int = 46, radius: tuple = (0.8, 2.4), seed
 
 
 def mouse_layers(photo: Image.Image, width: int, height: int) -> dict:
-    """The product photo split into what a GPU can light in real time:
-    `base` (the mouse and its shadow, transparent around it), `glow` and
-    `core` (where the LED's light shows, as white with that strength in the
-    alpha channel) and `box` (the mouse's bounds, as fractions of the image).
-    Tint `glow` with the LED color and screen-blend both over `base`."""
     from .art import PhotoMouseArt
     art = PhotoMouseArt(width, height, "#000000", photo, backdrop=Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
     white = Image.new("L", art.size, 255)

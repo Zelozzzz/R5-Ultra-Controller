@@ -1,14 +1,4 @@
-"""
-Everything Dorsal does, without a window.
-
-The Controller owns the mouse, the settings and all background work. A user
-interface (webui.py) reads `snapshot()` to draw itself and calls the public
-methods when you click things; it never touches the mouse directly.
-
-Threading: UI calls can arrive on any thread, and USB work runs on worker
-threads, so shared state is changed under `self.lock`. Every change bumps
-`self.rev`; the UI redraws when the revision moves.
-"""
+"""Everything the app does, no window. webui.py shows it."""
 
 from __future__ import annotations
 
@@ -32,12 +22,12 @@ from .rawinput import RawMouseListener
 from .runner import EffectRunner
 
 CONNECTION_POLL_S = 2.0
-BATTERY_POLL_S = 10.0          # the official app polls every 2.5 s; 10 s is plenty
-BATTERY_POLL_HIDDEN_S = 60.0   # window closed: just enough for the low-battery warning
+BATTERY_POLL_S = 10.0
+BATTERY_POLL_HIDDEN_S = 60.0
 LOW_BATTERY = 15
-LIVE_APPLY_DELAY_S = 0.12      # dragging a slider sends one update, not a hundred
+LIVE_APPLY_DELAY_S = 0.12
 DPI_WRITE_DELAY_S = 0.35
-STAGE_POLL_S = 1.5             # how often we check which DPI stage the mouse is on
+STAGE_POLL_S = 1.5
 
 
 def format_hours(hours: float) -> str:
@@ -75,13 +65,13 @@ class Controller:
         self.debounce = int(c["debounce"])
         self.motion_sync = bool(c["motion_sync"])
         self.ripple = bool(c["ripple"])
-        self.competitive: bool | None = None  # authoritative state comes from the mouse
+        self.competitive: bool | None = None
         self.sleep_min = int(c["sleep_min"]) if c.get("sleep_min") is not None else (0 if c["always_on"] else 5)
         self.angle_snap = bool(c.get("angle_snap", False))
-        self.ui_visible = True                  # the window is up; background polls pause when it isn't
+        self.ui_visible = True
         self.close_to_tray = bool(c["close_to_tray"])
         self.check_updates = bool(c.get("check_updates", True))
-        self.update = {"state": "idle"}         # idle | checking | latest | available | error
+        self.update = {"state": "idle"}
         from .theme import DEFAULT
         self.theme = c.get("theme") or DEFAULT
 
@@ -91,18 +81,17 @@ class Controller:
         self.firmware: str | None = None
         self.battery_history = dg.BatteryHistory(config.config_dir() / "battery.json")
         self._low_warned = False
-        self._warned_official = False           # told them once to close the official app
+        self._warned_official = False
 
         self.status = "Ready"
         self.log_lines: deque[str] = deque(maxlen=400)
-        self.profile_pending = False            # a saved profile was loaded but not applied yet
-        self.busy: set[str] = set()             # "read", "apply", "studio", "flash", ...
+        self.profile_pending = False
+        self.busy: set[str] = set()
         self.apply_flash: tuple[str, str, float] | None = None
-        self.frame_rgb = self.rgb               # what an effect last sent (live preview)
+        self.frame_rgb = self.rgb
         self.button_cache: dict[tuple[int, int], object] = {}
-        self.notices: deque[dict] = deque(maxlen=20)   # one-off messages the UI shows as dialogs
+        self.notices: deque[dict] = deque(maxlen=20)
 
-        # Diagnostics
         self.device_details: dict[str, str] = {}
         self.health: list[dg.Check] = []
         self.diagnostic: dict | None = None
@@ -118,6 +107,9 @@ class Controller:
         self.input_stage = None
         self.input_profile = None
         self.input_epoch = None
+        self.input_invalid = False
+        self.input_editor_config = None
+        self.apply_result = None
         self._input_started = None
         self._input_ended = None
         self._input_timer = None
@@ -125,7 +117,6 @@ class Controller:
         self._reset_input_meters()
         self.probe_result: str | None = None
 
-        # Firmware installer
         self.fw = {"open": False, "source": None, "image": None, "cable": "none", "steps": [],
                    "progress": None, "done": False}
 
@@ -138,9 +129,7 @@ class Controller:
         self._dpi_timer: threading.Timer | None = None
         self._stop = threading.Event()
         self._next_battery = 0.0
-        self.on_low_battery = None              # set by the UI (tray notification)
-
-    # Plumbing
+        self.on_low_battery = None
 
     def changed(self):
         with self.lock:
@@ -159,13 +148,11 @@ class Controller:
             self.rev += 1
 
     def notice(self, title: str, text: str, kind: str = "error"):
-        """A message the UI shows as a dialog."""
         with self.lock:
             self.notices.append({"title": title, "text": str(text), "kind": kind, "id": time.monotonic()})
             self.rev += 1
 
     def background(self, work, done=None, what="mouse", quiet=False, busy: str | None = None):
-        """Run `work()` on a thread, then `done(result)` (also on that thread)."""
         if busy:
             with self.lock:
                 if busy in self.busy:
@@ -181,6 +168,9 @@ class Controller:
                     self.log(f"{what} failed: {exc}")
                     self.set_status("Mouse not connected" if isinstance(exc, DeviceNotFound)
                                     else f"{what} failed (see Settings → Log)")
+                    if busy == "apply":
+                        self.apply_result = {"id": time.monotonic(), "title": "Save failed", "tone": "warn",
+                                             "text": str(exc), "rows": []}
                 result = exc
                 ok = False
             else:
@@ -193,14 +183,13 @@ class Controller:
             if ok and done:
                 try:
                     done(result)
-                except Exception as exc:          # never lose a worker silently
+                except Exception as exc:
                     self.log(f"{what}: {exc}")
             self.changed()
         threading.Thread(target=run, daemon=True, name=f"work-{what}").start()
         return True
 
     def start(self):
-        """Begin connection/battery polling and restore the lighting."""
         threading.Thread(target=self._loop, daemon=True, name="controller").start()
         if self.check_updates:
             timer = threading.Timer(4, self.check_for_update)
@@ -236,7 +225,7 @@ class Controller:
         self.check_updates = bool(enabled)
         self.save()
         self.changed()
-        if startup.is_enabled():            # keep the Run entry pointing at this copy
+        if startup.is_enabled():
             try:
                 startup.set_enabled(True)
             except OSError:
@@ -255,8 +244,7 @@ class Controller:
             if not launched:
                 launched = True
                 self.resolve_lighting()
-            # the DPI stage only matters on screen, so no stage reads while hidden:
-            # less traffic sharing the wireless link with your movement
+            # no stage reads while nobody's looking, less traffic on the wireless link
             if now >= next_stage and self.connected and self.ui_visible:
                 next_stage = now + STAGE_POLL_S
                 self._poll_active_stage()
@@ -280,14 +268,11 @@ class Controller:
         self.stop_input_test()
 
     def ready_to_close(self) -> str | None:
-        """None if quitting is safe, otherwise why not."""
         if "studio" in self.busy:
             return "Finishing the mouse operation. Quit again when it completes."
         if "flash" in self.busy:
             return "The firmware is installing. Quit when it has finished."
         return None
-
-    # Connection and battery
 
     def _show_connection(self, link_type: str | None):
         with self.lock:
@@ -301,15 +286,13 @@ class Controller:
             if link_type == "USB cable" and self.polling not in self.polling_values():
                 self.polling = "1000"
         if newly:
-            self.mouse.link.clear()            # quality is per connection
+            self.mouse.link.clear()
             self.firmware = None
             self._next_battery = 0.0
             threading.Timer(0.4, self._sync_profile).start()
             threading.Thread(target=self._check_official_app, daemon=True).start()
 
     def _check_official_app(self):
-        """The official app grabs the mouse too, and first-time users often
-        still have it open. Say so once instead of letting things silently fail."""
         if self._warned_official:
             return
         running = [n for n in dg.find_conflicts(sysinfo.running_process_names()) if n.lower().endswith(".exe")]
@@ -321,7 +304,6 @@ class Controller:
                         "then Dorsal works normally.", kind="info")
 
     def polling_values(self) -> list[str]:
-        """Up to 8000 Hz on the 2.4 GHz dongle, 1000 Hz over the cable."""
         rates = p.WIRED_POLLING_RATES if self.link_type == "USB cable" else list(p.POLLING_RATES)
         return [r.replace(" Hz", "") for r in rates]
 
@@ -359,8 +341,6 @@ class Controller:
             if self.on_low_battery:
                 self.on_low_battery(msg)
 
-    # Lighting
-
     def _rainbow_settings(self) -> RainbowSettings:
         r = self.rainbow
         return RainbowSettings(cycle_seconds=float(r["speed"]), saturation=r["sat"] / 100,
@@ -370,7 +350,6 @@ class Controller:
         self.frame_rgb = rgb
 
     def preview(self) -> tuple[tuple[int, int, int], float]:
-        """The color the LED shows right now, and how bright (0.3–1)."""
         if self.effect:
             rgb = self.frame_rgb if self.runner.running_key == self.effect else self.rgb
         else:
@@ -413,17 +392,17 @@ class Controller:
         if self._lighting_blocked():
             return
         if self.effect:
-            pass                 # effects dim each frame themselves, so nothing to send
+            pass
         else:
             self._send_static()
 
     def set_color(self, hex_color: str):
-        rgb = p.hex_to_rgb(hex_color)           # raises ValueError on nonsense
+        rgb = p.hex_to_rgb(hex_color)
         with self.lock:
             self.color = p.rgb_to_hex(rgb).upper()
             self.rgb = rgb
             self.profile_pending = False
-            if self.effect:                     # picking a color means "static"
+            if self.effect:
                 self.effect = None
                 self.runner.stop()
             self.rev += 1
@@ -437,7 +416,6 @@ class Controller:
         self._schedule_live_apply()
 
     def set_effect(self, key: str | None):
-        """Choose an effect; None (or the running one again) goes back to static."""
         with self.lock:
             self.profile_pending = False
             self.effect = None if key is None or key not in EFFECTS or self.effect == key else key
@@ -450,8 +428,6 @@ class Controller:
             self.rainbow["speed"] = round(max(0.5, min(30.0, float(seconds))), 1)
             self.rev += 1
 
-    # Performance settings (sent with Apply)
-
     def set_stage_dpi(self, index: int, value: int):
         with self.lock:
             self.stage_dpis[int(index)] = max(p.DPI_MIN, min(p.DPI_MAX, int(value)))
@@ -459,8 +435,6 @@ class Controller:
         self._schedule_dpi_write()
 
     def _schedule_dpi_write(self):
-        """write the DPI table shortly after the last change (dragging the slider
-        sends one packet, not fifty)."""
         if self._dpi_timer is not None:
             self._dpi_timer.cancel()
         self._dpi_timer = threading.Timer(DPI_WRITE_DELAY_S, self._write_dpis)
@@ -479,7 +453,7 @@ class Controller:
 
         def done(ack):
             if ack is not None and ack.ok:
-                with self.lock:           # the DPI table on the mouse now matches
+                with self.lock:
                     applied = list(self._applied)
                     applied[0] = tuple(dpis)
                     self._applied = tuple(applied)
@@ -489,7 +463,6 @@ class Controller:
         self.background(work, done, what="DPI")
 
     def set_active_stage(self, stage: int):
-        """switch the mouse to this DPI stage right away."""
         stage = max(1, min(p.NUM_DPI_STAGES, int(stage)))
         with self.lock:
             self.active_stage = stage
@@ -504,7 +477,6 @@ class Controller:
         self.background(lambda: self.mouse.set_active_stage(profile, stage), done, what="DPI stage")
 
     def _poll_active_stage(self):
-        """pick up DPI button presses on the mouse."""
         if not self.connected or self.busy & {"flash", "apply", "studio", "stage"}:
             return
         profile = self.profile
@@ -518,7 +490,6 @@ class Controller:
                         quiet=True, busy="stage")
 
     def set_setting(self, name: str, value):
-        """polling, lod, debounce, motion_sync, ripple, angle_snap, sleep_min."""
         with self.lock:
             if name == "polling":
                 if str(value) not in self.polling_values():
@@ -541,13 +512,11 @@ class Controller:
             self.rev += 1
 
     def _device_snapshot(self):
-        """Everything Apply writes, to tell whether there's anything to apply."""
         return (tuple(self.stage_dpis), tuple(self.stage_colors), self.polling, self.lod, self.debounce,
                 self.motion_sync, self.ripple, self.angle_snap, self.sleep_min, self.profile, self.color, self.brightness)
 
     @property
     def always_on(self) -> bool:
-        """The LED-patched firmware only stays lit while the mouse is awake."""
         return self.sleep_min == 0
 
     @always_on.setter
@@ -562,15 +531,17 @@ class Controller:
         return self.profile_pending or self._device_snapshot() != self._applied
 
     def set_profile(self, n: int):
+        if self.busy & {"flash", "apply", "studio", "read"}:
+            raise ValueError("Wait for the current mouse operation to finish")
         with self.lock:
             self.profile = max(1, min(3, int(n)))
+            self.profile_pending = False
+            self.apply_result = None
             self.competitive = None
             self.rev += 1
         profile = self.profile
 
         def done(ack):
-            # Dorsal used to only edit the chosen slot while the mouse kept
-            # running whatever profile it was on
             if ack is not None and not ack.ok:
                 self.set_status(f"The mouse didn't switch to profile {profile}. Move it to wake it and try again.")
             if not self.profile_pending:
@@ -588,8 +559,6 @@ class Controller:
         self.resolve_lighting()
 
     def _sync_profile(self):
-        """On connect: follow the profile the mouse is actually running (it
-        can be changed by a button), unless there are edits waiting."""
         if not self.connected or "flash" in self.busy:
             return
 
@@ -605,13 +574,10 @@ class Controller:
             try:
                 return self.mouse.read_active_profile()
             except Exception:
-                return None            # still read the settings below
+                return None
         self.background(work, done, what="Profile read", quiet=True)
 
-    # reading
-
     def competitive_mode(self, enabled: bool | None = None):
-        """None reads; a boolean writes the original sensor flag, then verifies."""
         if enabled is not None and type(enabled) is not bool:
             raise ValueError("Competitive Mode expects an on/off value")
         with self.lock:
@@ -658,7 +624,6 @@ class Controller:
                         quiet=quiet, busy="read")
 
     def _fill_from_settings(self, s: MouseSettings):
-        """Show what the mouse reported. Only fields that were read change."""
         with self.lock:
             if "competitive" not in self.busy:
                 self.competitive = s.competitive
@@ -676,11 +641,9 @@ class Controller:
                 self.motion_sync = bool(s.motion_sync)
             if s.ripple is not None:
                 self.ripple = bool(s.ripple)
-            # Brightness is deliberately NOT copied: the patched firmware reports 0
-            # until the DPI button has been pressed, and copying that would dim the
-            # LED on the next update. It's still shown by `dorsal read`.
             if s.angle_snap is not None:
                 self.angle_snap = bool(s.angle_snap)
+            # brightness isn't copied back: the patched firmware reads 0 until the DPI button gets pressed
             if s.sleep_seconds is not None:
                 self.sleep_min = 0 if s.sleep_seconds == p.SLEEP_NEVER else max(1, round(s.sleep_seconds / 60))
             if s.active_stage and 1 <= s.active_stage <= p.NUM_DPI_STAGES:
@@ -688,9 +651,9 @@ class Controller:
             self._applied = self._device_snapshot()
             self.rev += 1
 
-    # applying
-
     def apply(self):
+        if self.busy & {"flash", "apply", "studio", "read", "health", "input-start"}:
+            raise ValueError("Wait for the current mouse operation to finish")
         if not self.connected:
             self.set_status("Mouse not connected")
             return
@@ -701,14 +664,14 @@ class Controller:
                  "lod": p.LIFT_OFF_DISTANCES.get(self.lod, 1.0), "debounce": self.debounce,
                  "motion_sync": self.motion_sync, "ripple": self.ripple}
             snapshot = self._device_snapshot()
+            epoch = self._connection_epoch
+        self.apply_result = None
         self.runner.stop()
         self.set_status("Applying…")
-        self.background(lambda: self._apply(s), lambda report: self._apply_done(report, snapshot),
+        self.background(lambda: self._apply(s), lambda report: self._apply_done(report, snapshot, epoch),
                         what="Apply", busy="apply")
 
     def _apply(self, s: dict):
-        """Write everything, checking each command's acknowledgment. Each step
-        gets its own try so one failure doesn't silently skip the rest."""
         prof, report = s["profile"], []
 
         def step(name, packet):
@@ -717,8 +680,7 @@ class Controller:
             except (OSError, ValueError) as exc:
                 report.append((name, None, str(exc)))
 
-        with self.mouse:
-            # settings go to profile `prof`; make sure that's the one the mouse runs
+        with self.mouse._lock, self.mouse:
             step("profile", p.active_profile(prof))
             step("DPI stages", p.stage_dpis(prof, [(v, v) for v in s["dpis"]]))
             step("polling", p.polling_rate(prof, s["polling"]))
@@ -727,25 +689,42 @@ class Controller:
             step("motion sync", p.motion_sync(prof, s["motion_sync"]))
             step("ripple", p.ripple_control(prof, s["ripple"]))
             step("angle snap", p.angle_snap(prof, s["angle_snap"]))
-            # The LED is the DPI indicator and shows the stage color, so the
-            # chosen color goes into every stage slot (see R5Mouse.set_color).
-            step("LED color", p.dpi_stage_colors(prof, [s["rgb"]] * p.NUM_DPI_STAGES))
+            step("LED color", p.dpi_stage_colors(prof, [s["rgb"]] * p.NUM_DPI_STAGES))   # what the LED shows
             step("brightness", p.lightness(prof, s["brightness"], self.mouse.wired))
             step("sleep", p.sleep_time(prof, s["sleep_s"]))
             step("light effect", p.light_effect(prof, p.MODE_STATIC, 0, s["rgb"]))
-        return report
+            expected = {"polling": p.decode_polling(s["polling"]), "stage_dpis": [(v, v) for v in s["dpis"]],
+                        "lod": s["lod"], "debounce": s["debounce"], "motion_sync": s["motion_sync"],
+                        "ripple": s["ripple"], "angle_snap": s["angle_snap"]}
+            try:
+                readback = self.mouse.read_settings(prof)
+                rows = [r for r in dg.settings_evidence(readback, expected) if r["key"] in expected]
+                rows.append({"key": "sleep", "name": "Sleep timer", "actual": readback.sleep_seconds,
+                             "expected": s["sleep_s"], "status": "unavailable" if readback.sleep_seconds is None
+                             else "match" if readback.sleep_seconds == s["sleep_s"] else "different"})
+            except (OSError, ValueError) as exc:
+                rows = [{"key": "readback", "name": "Settings readback", "status": "unavailable", "detail": str(exc)}]
+        return report, rows
 
-    def _apply_done(self, report, snapshot):
+    def _apply_done(self, result, snapshot, epoch):
+        report, rows = result
         lines = [f"  {'✓' if ack and ack.ok else '✗'} {name:14s} {ack.describe() if ack else error}"
                  for name, ack, error in report]
         self.log("Apply:\n" + "\n".join(lines))
         accepted = sum(1 for _n, ack, _e in report if ack and ack.ok)
         total = len(report)
+        problems = [r["name"] for r in rows if r["status"] != "match"]
+        stale = epoch != self._connection_epoch or snapshot[9] != self.profile
         with self.lock:
-            if total and accepted == total:
+            if total and accepted == total and not problems and not stale:
                 self.profile_pending = False
                 self._applied = snapshot
-                flash, status = ("✓ Saved to mouse", "ok"), f"Saved: the mouse confirmed all {total} settings"
+                flash, status = ("Settings verified", "ok"), "Performance and sleep settings read back and verified. Lighting commands acknowledged."
+            elif stale:
+                flash, status = ("Save needs review", "warn"), "The connection or profile changed during save. Reload the mouse settings before continuing."
+            elif problems:
+                flash = ("Save not verified", "warn")
+                status = "Readback needs attention: " + ", ".join(problems) + ". Wake the mouse and retry."
             elif any(ack and ack.status == p.NO_MOUSE for _n, ack, _e in report):
                 flash = ("Mouse didn't answer", "warn")
                 status = f"Only {accepted}/{total} confirmed: the mouse may be asleep. Move it and apply again."
@@ -753,9 +732,11 @@ class Controller:
                 flash = ("Not all confirmed", "warn")
                 status = f"{accepted}/{total} settings confirmed (details in Settings → Log)"
             self.apply_flash = (*flash, time.monotonic() + 1.8)
+            self.apply_result = {"id": time.monotonic(), "title": flash[0], "tone": flash[1],
+                                 "text": status, "rows": rows}
         self.save()
         self.set_status(status)
-        self.resolve_lighting()            # a running effect takes the LED back
+        self.resolve_lighting()
 
     def reset_profile(self):
         profile = self.profile
@@ -764,10 +745,7 @@ class Controller:
                                     self.set_status(f"Profile {profile} reset to factory settings")),
                         what="Reset")
 
-    # Buttons
-
     def _studio(self, work, done, title):
-        """A button/macro operation: effects pause, one at a time."""
         if "studio" in self.busy:
             return False
         self.set_status(f"{title}…")
@@ -777,7 +755,6 @@ class Controller:
             done(result)
         started = self.background(work, finish, what=title, busy="studio")
         if started:
-            # When it's over (either way), the lighting comes back.
             def watch():
                 while "studio" in self.busy:
                     time.sleep(0.05)
@@ -796,8 +773,6 @@ class Controller:
 
     def write_binding(self, code: int, action: str, shortcut: str = "", slot: int = 1, repeats: int = 1,
                       mode: str = "times", macro_id=None, dpi: int = 0):
-        """assign an action to a button. with a macro from the library, it's
-        uploaded to the chosen onboard slot first."""
         code, profile, slot = int(code), self.profile, int(slot)
         if code == 1:
             raise ValueError("Left click can't be reassigned.")
@@ -811,7 +786,7 @@ class Controller:
                 if row is None:
                     raise ValueError("That macro isn't in your library anymore.")
                 steps = macros.parse_steps(row["document"]["steps"])
-                macros.encode(steps)                      # raises if it can't go on the mouse
+                macros.encode(steps)
         elif action == "Lock DPI":
             binding = dpi_lock_binding(dpi)
         else:
@@ -850,11 +825,8 @@ class Controller:
             out.append(entry)
         return out
 
-    # Macros (the editor's steps live in the UI; these check and store them)
-
     @staticmethod
     def macro_step(kind: str, value) -> dict:
-        """Validate one step typed in the editor; returns it normalized."""
         if kind == "Delay":
             try:
                 value = int(str(value).strip())
@@ -873,7 +845,6 @@ class Controller:
         return macros.parse_steps(raw)
 
     def macro_check(self, raw) -> dict:
-        """Byte size and upload-readiness of a step list."""
         try:
             data = macros.encode(self._steps(raw))
             return {"ok": True, "text": f"Ready to upload · {len(data)} bytes · all keys released"}
@@ -886,7 +857,6 @@ class Controller:
 
     @staticmethod
     def record_steps(events) -> list[dict]:
-        """events: [(key name, down, seconds)] captured by the UI's recorder."""
         recorder = macros.KeyRecorder()
         for name, down, t in events:
             if recorder.feed(name, bool(down), float(t)):
@@ -919,7 +889,7 @@ class Controller:
 
     def upload_macro(self, slot: int, raw):
         steps = self._steps(raw)
-        macros.encode(steps)                       # raises if it can't be uploaded
+        macros.encode(steps)
         slot = int(slot)
         self._studio(lambda: self.onboard.write_macro(slot, steps),
                      lambda _: self.set_status(f"Slot {slot} uploaded and verified. Assign it on the Buttons page."),
@@ -942,8 +912,6 @@ class Controller:
 
     slot_read: dict | None = None
 
-    # Profiles (saved setups on this PC)
-
     def profiles(self) -> list[dict]:
         out = []
         for row in self.library.entries("profile"):
@@ -954,7 +922,6 @@ class Controller:
         return out
 
     def save_profile(self, name: str, item_id=None) -> str:
-        """save what's on Home right now as a setup. with item_id, overwrite that one."""
         self.save()
         item_id = self.library.save(profile_document(name, self.cfg), item_id)
         self.set_status(f"Saved “{name.strip()}”")
@@ -967,7 +934,6 @@ class Controller:
         self.changed()
 
     def _stage_profile(self, settings: dict):
-        """Show a saved setup locally; Apply writes it to the mouse."""
         self.runner.stop()
         if self._live_timer is not None:
             self._live_timer.cancel()
@@ -1011,8 +977,6 @@ class Controller:
         self.library.delete(item_id)
         self.changed()
 
-    # Diagnostics
-
     def run_health_check(self):
         if self.busy & {"flash", "apply", "studio", "health", "link", "input-start"} or self._raw is not None:
             self.set_status("Finish the current operation before running diagnostics")
@@ -1044,8 +1008,7 @@ class Controller:
                 checks.insert(0, dg.Check("fail", "R5 Ultra interface not found", "Connect the receiver or USB cable, then run again."))
             else:
                 try:
-                    # Keep other Dorsal commands out of the measured burst.
-                    with self.mouse._lock, self.mouse:
+                    with self.mouse._lock, self.mouse:     # nothing else gets in the middle of the timed burst
                         result = dg.run_link_test(self.mouse, 30)
                         details = self.mouse.device_info()
                         battery = self.mouse.read_battery()
@@ -1070,12 +1033,17 @@ class Controller:
                     f"{read}/{fields} fields read; {differences} differ from the editor. Differences may be unapplied edits. See the comparison below."))
             session.update({"finished_at": datetime.now(timezone.utc).isoformat(),
                             "duration_s": round(time.monotonic() - started, 3), "details": details,
+                            "command": None if result is None else {"answered": result.answered,
+                                "sent": result.sent, "median_ms": result.stats().get("median")},
                             "checks": [vars(c) for c in checks]})
             return session, checks, result
 
         def done(value):
             session, checks, result = value
             with self.lock:
+                previous = self.diagnostic
+                if previous and previous.get("command") and previous["profile"] == profile and previous["connection"] == link_type:
+                    session["previous"] = {"finished_at": previous["finished_at"], **previous["command"]}
                 session["stale"] = epoch != self._connection_epoch or profile != self.profile
                 if session["stale"]:
                     checks.append(dg.Check("warn", "Device or profile changed during the test", "Run again for the current connection and profile."))
@@ -1094,7 +1062,7 @@ class Controller:
                 or self.diagnostic["profile"] != self.profile}
 
     def run_link_test(self, count: int = 200):
-        if self._link_stop is not None:          # running: this means Stop
+        if self._link_stop is not None:
             self._link_stop.set()
             return
         if not self.connected:
@@ -1159,7 +1127,7 @@ class Controller:
                         self.mouse.READ_DELAY = old
                 ack = self.mouse.last_ack
                 return decode(resp) if ack and ack.ok else (ack.describe() if ack else "no answer")
-            except Exception as exc:          # unplugged, or the mouse is busy
+            except Exception as exc:
                 return f"failed: {exc}"
 
         def done(text):
@@ -1178,8 +1146,6 @@ class Controller:
                         "rx": dg.hex_bytes(reply, 12) if status != "sent" else "",
                         "ms": None if ms is None else round(ms, 1)})
         return out
-
-    # live input test
 
     def _reset_input_meters(self):
         with self._input_lock:
@@ -1211,6 +1177,10 @@ class Controller:
             self.input_configured = int(settings.polling.split()[0]) if settings.polling else None
             self.input_stage = settings.active_stage
             self.input_profile, self.input_epoch = profile, epoch
+            self.input_invalid = False
+            self.input_editor_config = (self.polling, tuple(self.stage_dpis))
+            if settings.active_stage:
+                self.active_stage = settings.active_stage
             self.input_dpi = 0
             if settings.stage_dpis and self.input_stage and 1 <= self.input_stage <= len(settings.stage_dpis):
                 x, y = settings.stage_dpis[self.input_stage - 1]
@@ -1253,6 +1223,7 @@ class Controller:
         self.stop_input_test()
         self._reset_input_meters()
         self._input_started = self._input_ended = None
+        self.input_invalid = False
 
     def _on_raw_input(self, t, dx, dy, buttons):
         with self._input_lock:
@@ -1274,10 +1245,15 @@ class Controller:
                  "buttons": {k: (v.presses, v.chatter) for k, v in c.buttons.items()}}
             s["configuration_at_start"] = {"profile": self.input_profile, "polling_hz": self.input_configured,
                                            "dpi": self.input_dpi or None, "stage": self.input_stage}
+            s["configuration_changed"] = self.input_invalid
         return s
 
     def input_view(self) -> dict:
         s = self.input_summary()
+        if self._input_started and (self.input_epoch != self._connection_epoch or self.input_profile != self.profile
+                or (self.input_stage is not None and self.input_stage != self.active_stage)
+                or (self.input_editor_config is not None and self.input_editor_config != (self.polling, tuple(self.stage_dpis)))):
+            self.input_invalid = True
         configured = self.input_configured
         elapsed = max(0, (self._input_ended or time.monotonic()) - self._input_started) if self._input_started else 0
         view = {"running": self._raw is not None, "error": self.raw_error, "events": s["events"],
@@ -1290,16 +1266,18 @@ class Controller:
             verdict, text = dg.judge_polling(s["avg"], configured) if configured else ("unverified", "Polling setting could not be read; this is the observed Windows movement-event rate.")
             view["polling"] = {"avg": s["avg"], "peak": s["peak"], "stability": s["stability"],
                                "verdict": verdict, "text": text}
-        view["ips"] = s["ips"] if self.input_dpi else None
-        if self._input_started and (self.input_epoch != self._connection_epoch or self.input_profile != self.profile):
-            view["hint"] = "The connection or profile changed. Start a new capture; these readings use the configuration at capture start."
+        view["ips"] = s["ips"] if self.input_dpi and not self.input_invalid else None
+        view["invalid"] = self.input_invalid
+        if self.input_invalid:
+            view["hint"] = "Configuration changed during this capture. Run again with one DPI stage and polling rate."
+            if "polling" in view:
+                view["polling"].update(verdict="unverified", text="Configuration changed; comparison is unavailable.")
         if self._raw is not None and s["events"] == 0 and self._raw.other_mice > 50:
             view["hint"] = "That's a different mouse: this test only listens to the R5 Ultra."
         return view
 
-    # report and export
-
     def report(self) -> str:
+        self.input_view()  # update configuration validity before exporting derived measurements
         b, q = self.battery, (self.mouse.link.quality() if self.connected else None)
         lines = [f"{APP_NAME} {__version__} diagnostics report",
                  f"Windows {platform.version()} · Python {platform.python_version()}", "",
@@ -1330,8 +1308,11 @@ class Controller:
                       + (f", avg {s['avg']:.1f} ms, p95 {s['p95']:.1f} ms, jitter {s['jitter']:.1f} ms" if s else "")]
         s = self.input_summary()
         if s["events"]:
+            speed = f"{s['ips']:.0f} IPS at {self.input_dpi} DPI" if self.input_dpi and not self.input_invalid else "unavailable"
             lines += ["", f"Input test: polling avg {s['avg']:,.0f} Hz, peak {s['peak']:,.0f} Hz, "
-                          f"{s['stability']:.0%} steady; peak speed {s['ips']:.0f} IPS at {self.input_dpi} DPI"]
+                          f"{s['stability']:.0%} steady; peak speed {speed}"]
+            if self.input_invalid:
+                lines.append("Configuration changed during capture; repeat before comparing against configured polling.")
             lines += [f"  {k}: {n} presses, {ch} rapid repeats" for k, (n, ch) in s["buttons"].items() if n]
             if s["intervals"]:
                 lines.append(f"Arrival intervals (ms): {s['intervals']}")
@@ -1340,6 +1321,7 @@ class Controller:
         return "\n".join(lines)
 
     def export_session(self, path: str):
+        self.input_view()
         s = self.input_summary(include_samples=True)
         r = self.link_result
         doc = {"format": "dorsal-diagnostics", "version": 1, "app_version": __version__,
@@ -1377,8 +1359,6 @@ class Controller:
         else:
             atomic_json(dest, doc)
         self.set_status(f"Diagnostic session saved to {dest.name}")
-
-    # Firmware installer
 
     def firmware_open(self):
         with self.lock:
@@ -1490,7 +1470,7 @@ class Controller:
 
         def done(error):
             with self.lock:
-                self.firmware = None                     # re-read once the mouse reconnects
+                self.firmware = None
             if error:
                 self._fw_step(3, "bad", f"{error} Replug the cable and press Install again; "
                                         "the mouse is safe in install mode.")
@@ -1500,8 +1480,6 @@ class Controller:
                 self._fw_step(3, "ok", success)
             self.save()
         self.background(work, done, what="Firmware install", busy="flash")
-
-    # App settings
 
     def set_startup(self, enabled: bool):
         try:
@@ -1521,8 +1499,6 @@ class Controller:
             self.theme = name
             self.save()
             self.changed()
-
-    # Saving and the UI's view of everything
 
     def save(self):
         with self.lock:
@@ -1574,6 +1550,11 @@ class Controller:
                 "angle_snap": self.angle_snap, "dirty": self.dirty, "profile_pending": self.profile_pending,
                 "status": self.status, "busy": sorted(self.busy),
                 "apply_flash": None if flash is None else {"text": flash[0], "tone": flash[1]},
+                "apply_result": self.apply_result,
+                "pending_changes": [name for name, old, new in zip(
+                    ("DPI stages", "Stage colors", "Polling rate", "Lift-off distance", "Debounce", "Motion sync",
+                     "Ripple control", "Angle snap", "Sleep timer", "Onboard profile", "Lighting color", "Brightness"),
+                    self._applied, self._device_snapshot()) if old != new],
                 "bindings": self.bindings_view(), "actions": list(ACTIONS),
                 "macros": self.macro_library(), "profiles": self.profiles(),
                 "library_error": self.library.error,

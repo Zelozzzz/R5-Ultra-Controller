@@ -1,5 +1,4 @@
-"""Double-click launcher (.pyw runs without a console window).
-run.bat and the Windows startup entry both start the app through this file."""
+"""Starts Dorsal. .pyw so no console window pops up."""
 
 import sys
 from pathlib import Path

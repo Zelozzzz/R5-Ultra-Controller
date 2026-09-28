@@ -1,4 +1,4 @@
-"""Portable, versioned macro/profile documents with atomic local storage."""
+"""Saved macros and profiles on this PC."""
 from __future__ import annotations
 
 import copy
@@ -38,7 +38,6 @@ def profile_document(name: str, settings: dict) -> dict:
         if type(settings[key]) is not bool:
             raise ValueError(f"{key} must be on or off.")
     kept = {key: copy.deepcopy(settings[key]) for key in PROFILE_FIELDS}
-    # added later, so older profiles don't have them
     if settings.get("sleep_min") in protocol.SLEEP_CHOICES:
         kept["sleep_min"] = settings["sleep_min"]
     if type(settings.get("angle_snap")) is bool:

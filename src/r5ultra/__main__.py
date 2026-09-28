@@ -1,4 +1,4 @@
-"""`python -m r5ultra` opens the GUI; `python -m r5ultra <command>` runs the CLI."""
+"""Python -m r5ultra opens the app, python -m r5ultra <command> runs the command line."""
 
 import sys
 

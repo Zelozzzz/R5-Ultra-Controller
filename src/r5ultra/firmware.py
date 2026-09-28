@@ -1,14 +1,8 @@
-"""
-Firmware images: identify, extract, and patch.
+"""Firmware images: pull the stock one out of the official app, check it, patch it.
 
-This repo does NOT ship Attack Shark's firmware (it's their code, not ours to
-relicense). Instead you point these tools at your own copy of the official
-software's app.asar (or a stock .hex taken from it), and we apply the
-two-byte LED patch locally. See docs/FIRMWARE.md for the full story.
-
-Every image is identified by the SHA-256 of its binary contents, so the
-flasher can refuse anything it doesn't recognize, like the dongle firmware
-that sits right next to the mouse firmware inside the official app.
+Attack Shark's firmware isn't in this repo. The patch gets built on your PC
+from your own copy, and every image is checked by SHA-256 so nothing unknown
+gets flashed (like the dongle firmware sitting right next to it).
 """
 
 from __future__ import annotations
@@ -27,7 +21,7 @@ STOCK_HEX_PATTERN = re.compile(r"JXC_R5_Ultra_8K_Mouse_840_APP_.*\.hex$", re.IGN
 @dataclass(frozen=True)
 class KnownImage:
     name: str
-    sha256: str        # of the binary contents, minaddr..maxaddr
+    sha256: str
     start: int
     end: int
     patched: bool
@@ -54,9 +48,6 @@ class Patch:
     replacement: bytes
 
 
-# Patch A: turn `blt #0x34E7C` into `b #0x34E7C`, so the cleanup that clears
-# led_on_flag after 3000 ticks never runs. Two bytes; nothing else changes.
-# Disassembly and the three failed attempts (C, D, E): docs/FIRMWARE.md.
 PATCH_A = Patch("A: skip LED-timeout cleanup (blt -> b)", 0x34E70,
                 bytes([0x04, 0xDB]), bytes([0x04, 0xE0]))
 
@@ -74,7 +65,6 @@ def _intelhex():
 
 
 def load_hex(source: str | Path | bytes):
-    """Load an Intel HEX image from a path, or from the file's raw bytes."""
     IntelHex = _intelhex()
     if isinstance(source, bytes):
         return IntelHex(io.StringIO(source.decode("ascii")))
@@ -95,10 +85,7 @@ def identify(ih) -> KnownImage | None:
 
 
 def apply_patch(ih, patch: Patch = PATCH_A):
-    """Return a patched copy. Refuses if the bytes at the patch address are
-    not exactly what we expect, because then this is not the firmware the
-    patch was designed for."""
-    out = _intelhex()(ih)          # IntelHex(other) makes an independent copy
+    out = _intelhex()(ih)
     current = bytes(out[patch.address + i] for i in range(len(patch.original)))
     if current != patch.original:
         raise FirmwareError(
@@ -109,12 +96,6 @@ def apply_patch(ih, patch: Patch = PATCH_A):
         out[patch.address + i] = b
     return out
 
-
-# app.asar (Electron archive) reading
-#
-# Layout: [u32 = 4][u32 header_size][u32 payload_size][u32 json_len][json ...]
-# File data starts at 8 + header_size. Each file entry in the JSON has an
-# "offset" (a string!) relative to that point and a "size".
 
 def _asar_header(data: bytes) -> tuple[dict, int]:
     if len(data) < 16:
@@ -128,7 +109,6 @@ def _asar_header(data: bytes) -> tuple[dict, int]:
 
 
 def asar_list(data: bytes) -> list[str]:
-    """All file paths inside an asar archive, with '/' separators."""
     header, _ = _asar_header(data)
     paths: list[str] = []
 
@@ -175,9 +155,6 @@ def find_7zip() -> str | None:
 
 
 def asar_from_installer(installer: str | Path, workdir: str | Path) -> Path:
-    """The official download is an NSIS installer. Inside it:
-    $PLUGINSDIR/app-64.7z -> resources/app.asar. Extract just that file with
-    7-Zip (reading the archive only; the installer is never run)."""
     import subprocess
     seven = find_7zip()
     if seven is None:
@@ -196,8 +173,6 @@ def asar_from_installer(installer: str | Path, workdir: str | Path) -> Path:
 
 
 def load_stock(source: str | Path):
-    """Accept the official installer .exe, its app.asar, or a stock .hex, and
-    return the stock image, verified by hash."""
     source = Path(source)
     if not source.exists():
         raise FirmwareError(f"File not found: {source}")
@@ -221,8 +196,6 @@ def load_stock(source: str | Path):
 
 
 def build_patched(source: str | Path, output: str | Path) -> KnownImage:
-    """Read stock firmware from `source`, apply Patch A, check the result
-    matches the known-good patched image, and write it to `output`."""
     patched = apply_patch(load_stock(source))
     known = identify(patched)
     if known is not PATCHED_840:

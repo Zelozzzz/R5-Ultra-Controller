@@ -1,16 +1,4 @@
-"""
-Settings storage.
-
-Settings live in %APPDATA%\\Dorsal\\config.json so that updating the app (a
-new installer, git pull, or re-downloading) never overwrites them. Settings
-from older versions are migrated automatically once: the
-%APPDATA%\\R5UltraController folder from before the rename, and v1's
-src/r5_config.json.
-
-Saving is atomic: write to a temp file, then rename over the old one. If the
-PC loses power mid-save you keep the previous settings instead of an empty
-or half-written file.
-"""
+"""Settings, in %APPDATA%\\Dorsal\\config.json. Saved atomically so a crash can't leave half a file."""
 
 from __future__ import annotations
 
@@ -28,11 +16,11 @@ DEFAULTS: dict = {
     "last_color": "#FF0000",
     "brightness": 200,
     "profile": 1,
-    "always_on": True,            # old setting, read once to fill sleep_min
-    "sleep_min": None,            # minutes before the mouse sleeps, 0 = never
+    "always_on": True,
+    "sleep_min": None,
     "angle_snap": False,
     "close_to_tray": True,
-    "check_updates": True,        # ask GitHub for a newer release when Dorsal starts
+    "check_updates": True,
     "dpi_stage": 1,
     "stage_dpis": DEFAULT_STAGE_DPIS,
     "stage_colors": DEFAULT_STAGE_COLORS,
@@ -45,14 +33,13 @@ DEFAULTS: dict = {
     "rainbow_sat": 100,
     "rainbow_val": 100,
     "rainbow_dir": "forward",
-    "last_effect": None,          # effect key to resume on launch
+    "last_effect": None,
     "firmware_source": None,
-    "theme": "ember",             # theme.py: ember (default), aura or ocean
+    "theme": "ember",
 }
 
 
-
-OLD_DIR_NAMES = ("R5UltraController",)     # before the app was renamed Dorsal
+OLD_DIR_NAMES = ("R5UltraController",)
 
 
 def _appdata() -> Path:
@@ -64,8 +51,6 @@ def config_dir() -> Path:
 
 
 def migrate_old_dir() -> bool:
-    """Copy settings (and the cached mouse image) from a pre-rename folder,
-    once. The old folder is left alone. Returns True if anything was copied."""
     new = config_dir()
     if new.exists():
         return False
@@ -90,19 +75,16 @@ def _read_json(path: Path) -> dict | None:
 
 
 def _fit_list(value, default: list, kind) -> list:
-    """Keep a saved list only if it has the right length and element type."""
     if isinstance(value, list) and len(value) == len(default) and all(isinstance(v, kind) for v in value):
         return value
     return list(default)
 
 
 def with_defaults(saved: dict) -> dict:
-    """Merge saved settings over DEFAULTS, dropping values of the wrong type
-    so a hand-edited or old config can't crash the app."""
     cfg = {}
     for key, default in DEFAULTS.items():
         value = saved.get(key, default)
-        if default is None:                      # optional string, e.g. last_effect
+        if default is None:
             cfg[key] = value if isinstance(value, str) else None
         elif isinstance(default, bool):
             cfg[key] = value if isinstance(value, bool) else default

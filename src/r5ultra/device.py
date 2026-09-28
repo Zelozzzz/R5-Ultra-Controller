@@ -1,17 +1,4 @@
-"""
-HID transport for the R5 Ultra.
-
-`R5Mouse` owns the USB handle. Use it as a context manager to keep one handle
-open for a burst of commands (fast), or call methods directly and each call
-opens and closes its own handle (simple, slower).
-
-    with R5Mouse() as mouse:
-        mouse.send(protocol.lightness(1, 200))
-        mouse.send(protocol.light_effect(1, protocol.MODE_STATIC, 0, (255, 0, 0)))
-
-`hid` is imported lazily so the rest of the package (and the test suite)
-works on machines without hidapi installed.
-"""
+"""Talking to the mouse over HID: 64-byte feature reports, every reply checked."""
 
 from __future__ import annotations
 
@@ -34,7 +21,7 @@ WIRED_PID = p.R5_PIDS[0]
 
 
 def _hid():
-    import hid  # noqa: PLC0415 (lazy on purpose, see module docstring)
+    import hid  # noqa: PLC0415  (imported late so the tests don't need hidapi)
     return hid
 
 
@@ -51,10 +38,6 @@ _found_cache: tuple[frozenset[str], tuple[bytes, int] | None] | None = None
 
 
 def find_device() -> tuple[bytes, int] | None:
-    """(path, product id) of the vendor HID interface (usage page 0xFFFF,
-    usage 0), or None. The wired connection is preferred when both exist.
-    The search takes ~100 ms and every open() needs it, so the answer is
-    reused until the mouse's entries in Windows' device list change."""
     global _found_cache
     paths = _hid_interface_paths()
     if paths is not None and _found_cache is not None and _found_cache[0] == paths:
@@ -69,10 +52,9 @@ def find_device_path() -> bytes | None:
     return found[0] if found else None
 
 
+# hid.enumerate() opens every HID device on the PC (~100 ms). windows' own device
+# list is basically free, so the full search only runs when that list changes
 def _hid_interface_paths() -> frozenset[str] | None:
-    """The R5's HID interface names, straight from Windows' device list.
-    ~0.2 ms, and nothing gets opened, unlike hid.enumerate() (~100 ms: it
-    opens every HID device on the PC). None if the list can't be read."""
     try:
         import ctypes
 
@@ -94,8 +76,6 @@ def _hid_interface_paths() -> frozenset[str] | None:
 
 
 def connection_type() -> str | None:
-    """'USB cable', '2.4 GHz dongle', or None if not connected. Cheap enough
-    to poll every couple of seconds (see find_device)."""
     try:
         found = find_device()
     except Exception:
@@ -107,19 +87,14 @@ def connection_type() -> str | None:
 
 @dataclass(frozen=True)
 class LinkQuality:
-    bars: int              # 0..4
-    label: str             # "Excellent" ... "No response"
-    answered: float        # fraction of recent commands the mouse answered
-    latency_ms: float      # median time for the reply to come back
+    bars: int
+    label: str
+    answered: float
+    latency_ms: float
     samples: int
 
 
 class LinkStats:
-    """Rolling record of the last N command replies. Connection quality is
-    how reliably the mouse answers (a dongle answering alone means the mouse
-    didn't get the command) plus how quickly the reply comes back. The
-    protocol doesn't expose radio signal strength, so this is measured, not
-    read from the hardware."""
 
     def __init__(self, size: int = 20):
         self._samples: deque[tuple[bool, float]] = deque(maxlen=size)
@@ -127,7 +102,7 @@ class LinkStats:
 
     def record(self, ack: p.Ack, latency_ms: float):
         if ack.status == p.MISMATCH:
-            return          # a stale reply says nothing about the link
+            return
         with self._lock:
             self._samples.append((ack.ok, latency_ms))
 
@@ -158,7 +133,6 @@ class LinkStats:
 
 @dataclass
 class MouseSettings:
-    """Current configuration as read from the mouse. None = couldn't read it."""
     stage_dpis: list[tuple[int, int]] | None = None
     active_stage: int | None = None
     polling: str | None = None
@@ -178,10 +152,8 @@ class MouseSettings:
 
 
 class R5Mouse:
-    """One logical connection to the mouse. Thread-safe: a lock serializes
-    writes so the GUI and effects never interleave packets."""
 
-    READ_DELAY = 0.05  # seconds to wait before reading a response back
+    READ_DELAY = 0.05     # the reply isn't ready right away
 
     def __init__(self):
         self._dev = None
@@ -189,13 +161,9 @@ class R5Mouse:
         self._lock = threading.RLock()
         self.link = LinkStats()
         self.last_ack: p.Ack | None = None
-        # The last few hundred exchanges, for the Diagnostics traffic view:
-        # (seq, unix time, sent payload, reply or b"", status, milliseconds or None).
         self.trace: deque = deque(maxlen=400)
         self._seq = 0
-        self.wired = False          # on the USB cable (PID 0x0046) rather than the dongle
-
-    # connection
+        self.wired = False
 
     def open(self):
         with self._lock:
@@ -210,7 +178,7 @@ class R5Mouse:
                     dev.open_path(path)
                 except Exception:
                     global _found_cache
-                    _found_cache = None        # search again next time
+                    _found_cache = None
                     raise
                 dev.set_nonblocking(True)
                 self._dev = dev
@@ -227,7 +195,6 @@ class R5Mouse:
                     self._dev = None
 
     def reset(self):
-        """Drop the handle after an error (for example the dongle re-enumerated)."""
         with self._lock:
             if self._dev is not None:
                 try:
@@ -244,11 +211,7 @@ class R5Mouse:
         self.close()
         return False
 
-    # I/O
-
     def send(self, payload: bytes, read_back: bool = True) -> bytes:
-        """Send one 64-byte payload as a feature report. Returns the response
-        (with the report-id byte first) or b'' if read_back is False."""
         report = bytes([0]) + bytes(payload)[:p.PACKET_SIZE].ljust(p.PACKET_SIZE, b"\x00")
         with self._lock:
             self.open()
@@ -260,9 +223,7 @@ class R5Mouse:
                 time.sleep(self.READ_DELAY)
                 started = time.perf_counter()
                 resp = bytes(self._dev.get_feature_report(0, p.PACKET_SIZE + 1))
-                # Every read-back doubles as an acknowledgment and a link sample.
                 self.last_ack = p.check_ack(report[1:], resp)
-                # Latency = only the reply fetch, not our fixed wait before it.
                 ms = (time.perf_counter() - started) * 1000
                 self.link.record(self.last_ack, ms)
                 self._record(report[1:], resp, self.last_ack.status, ms)
@@ -279,18 +240,12 @@ class R5Mouse:
         self.trace.append((self._seq, time.time(), bytes(sent), bytes(reply), status, ms))
 
     def command(self, payload: bytes) -> p.Ack:
-        """Send a command and report whether the mouse accepted it."""
         with self._lock:
             self.send(payload)
             return self.last_ack
 
-    # high-level helpers
-
+    # the LED shows the DPI stage color, so a static color goes into all 6 stage slots
     def set_color(self, profile: int, rgb: p.RGB, brightness: int) -> p.Ack | None:
-        """A resting static color. The R5 Ultra's LED is its DPI indicator, so
-        what it shows is the DPI-stage color: writing only the light effect
-        leaves the old stage color on the LED. Write both, like an effect
-        frame does, plus brightness. Returns the stage-color write's ack."""
         with self._lock:
             self.send(p.light_effect(profile, p.MODE_STATIC, 0, rgb))
             ack = self.command(p.dpi_stage_colors(profile, [rgb] * p.NUM_DPI_STAGES))
@@ -301,14 +256,11 @@ class R5Mouse:
         with self._lock, self:
             return self.command(p.lightness(profile, brightness, self.wired))
 
-
     def set_active_stage(self, profile: int, stage: int) -> p.Ack | None:
-        """Switch the mouse to DPI stage 1..6, like pressing its DPI button."""
         with self._lock, self:
             return self.command(p.active_dpi_stage(profile, max(1, min(p.NUM_DPI_STAGES, int(stage)))))
 
     def set_active_profile(self, profile: int) -> p.Ack | None:
-        """Make the mouse run onboard profile 1..3."""
         with self._lock, self:
             return self.command(p.active_profile(max(1, min(3, int(profile)))))
 
@@ -322,20 +274,15 @@ class R5Mouse:
             v = p.reply_byte(self._answer(p.get_setting(profile, 1, 0x02)))
         return v if v is not None and 1 <= v <= p.NUM_DPI_STAGES else None
 
+    # one effect frame. only the stage colors change the LED, static mode is set once per effect
     def push_color(self, profile: int, rgb: p.RGB, set_mode: bool = True):
-        """One animation frame. The LED shows the DPI-stage color, so the
-        stage slots are what change it; the static light-effect only has to be
-        set once per effect (set_mode), which halves the traffic on the
-        wireless link while an effect plays. No read-back."""
         with self._lock:
             if set_mode:
                 self.send(p.light_effect(profile, p.MODE_STATIC, 0, rgb), read_back=False)
             self.send(p.dpi_stage_colors(profile, [rgb] * p.NUM_DPI_STAGES), read_back=False)
 
+    # b"" if the reply was for some other command (another app, or a late reply)
     def _answer(self, payload: bytes) -> bytes:
-        """Send a read and return its reply, or b"" if the reply answers some
-        other command (another program talking to the mouse, or a late reply).
-        Parsers treat b"" as "no answer" instead of reading the wrong bytes."""
         resp = self.send(payload)
         if self.last_ack is None or self.last_ack.status == p.MISMATCH:
             return b""
@@ -346,12 +293,11 @@ class R5Mouse:
         return bool(value) if value in (0, 1) else None
 
     def set_competitive(self, profile: int, enabled: bool) -> bool:
-        """Write the vendor's sensor flag and require matching read-back."""
         with self._lock, self:
             ack = self.command(p.tracking_mode(profile, int(enabled)))
             if not ack.ok:
                 raise OSError(f"Competitive Mode: {ack.describe()}")
-            time.sleep(.2)  # the vendor UI waits 200 ms after this command
+            time.sleep(.2)      # the official app waits this long too
             actual = self.read_competitive(profile)
             if actual is None or actual != enabled:
                 raise OSError("Competitive Mode could not be verified. Read the mouse state again.")
@@ -361,8 +307,6 @@ class R5Mouse:
         return p.parse_stage_dpis(self._answer(p.get_stage_dpis(profile)))
 
     def read_battery(self) -> p.Battery | None:
-        """Battery state (see protocol.Battery), or None on a garbled reply.
-        The official app waits 100 ms before reading this one back."""
         with self._lock:
             old, self.READ_DELAY = self.READ_DELAY, 0.1
             try:
@@ -371,13 +315,6 @@ class R5Mouse:
                 self.READ_DELAY = old
 
     def ping(self, n: int = 0, timeout: float = 0.25) -> tuple[p.Ack, float | None]:
-        """One timed round trip: send a harmless read, then poll back-to-back
-        until the mouse's reply arrives (each poll is a ~1 ms USB transfer;
-        time.sleep can't wait less than ~15 ms on Windows). Returns (ack,
-        milliseconds). Consecutive pings alternate between two read commands,
-        so a leftover reply to the previous ping can't be mistaken for this one.
-        Not recorded in self.link: that measures only the reply fetch after
-        send()'s fixed wait, so the numbers wouldn't be comparable."""
         request = p.get_battery() if n % 2 == 0 else p.get_firmware_version()
         report = bytes([0]) + request
         with self._lock:
@@ -389,8 +326,7 @@ class R5Mouse:
                 while time.perf_counter() - started < timeout:
                     resp = bytes(self._dev.get_feature_report(0, p.PACKET_SIZE + 1))
                     ack = p.check_ack(request, resp)
-                    # 0xA0 can be the dongle's "still waiting for the mouse",
-                    # so only a final answer ends the wait early.
+                    # A0 can also be the dongle saying it's still waiting on the mouse
                     if ack.status in (p.ACCEPTED, p.REJECTED):
                         elapsed = (time.perf_counter() - started) * 1000
                         return ack, elapsed if ack.ok else None
@@ -403,7 +339,6 @@ class R5Mouse:
                     self.close()
 
     def device_info(self) -> dict[str, str]:
-        """Read-only identification for the diagnostics report."""
         info: dict[str, str] = {}
 
         def read(device: int, length: int, category: int, command: int) -> bytes:
@@ -415,9 +350,8 @@ class R5Mouse:
             old, self.READ_DELAY = self.READ_DELAY, 0.1
             try:
                 info["Mouse firmware"] = p.parse_firmware_version(read(2, 16, 0, 0x81)) or "unknown"
-                # same request, addressed to the receiver (device 0)
                 if not self.wired:
-                    info["Dongle firmware"] = p.parse_firmware_version(read(0, 16, 0, 0x81)) or "unknown"
+                    info["Dongle firmware"] = p.parse_firmware_version(read(0, 16, 0, 0x81)) or "unknown"  # device 0 = dongle
                 active = p.reply_byte(read(2, 1, 0, 0x85), 7)
                 count = p.reply_byte(read(2, 1, 0, 0x86), 7)
                 info["Onboard profile"] = f"{active} of {count}" if active and count else "unknown"
@@ -426,8 +360,6 @@ class R5Mouse:
         return info
 
     def read_settings(self, profile: int) -> MouseSettings:
-        """Read the mouse's current configuration, field by field. A field
-        that doesn't answer stays None instead of failing the whole read."""
         s = MouseSettings()
         with self:
             s.stage_dpis = self.read_stage_dpis(profile)
@@ -446,8 +378,7 @@ class R5Mouse:
             s.active_stage = byte("active_stage")
             s.debounce = byte("debounce")
             s.competitive = self.read_competitive(profile)
-            # Hyper mode and the LED indicator are write-only on the R5 Ultra
-            # (it rejects those reads with 0xA3), so they aren't asked for.
+            # hyper mode and the DPI indicator can't be read on this mouse (0xA3), so they're skipped
             for flag in ("motion_sync", "ripple", "angle_snap"):
                 v = byte(flag)
                 setattr(s, flag, None if v is None else v == 1)
@@ -459,7 +390,6 @@ class R5Mouse:
         return s
 
     def read_firmware_version(self) -> str | None:
-        """Firmware version string such as "0.0.12.0", or None."""
         with self._lock:
             old, self.READ_DELAY = self.READ_DELAY, 0.1
             try:

@@ -1,20 +1,9 @@
-"""
-R5 Ultra bootloader flasher.
+"""Flashing the mouse through its bootloader. Cable only, the dongle can't do it.
 
-Flow:
-  1. open the app device (wired, 0x373E:0x0046)
-  2. enter_bl: the mouse disconnects and re-enumerates as the bootloader
-     (0x373E:0xB046); the old handle is dead, so close it
-  3. wait for the bootloader, open it, query its version
-  4. erase
-  5. program: 32-byte packets (two 16-byte segments each), data XOR 0x55,
-     with a longer pause every 4 KB so the bootloader's cache can flush
-  6. verify every segment (this is what commits the write; skip it and the
-     bootloader rolls everything back)
-  7. exit_bl: the mouse reboots into the new firmware
-
-A flash needs the USB cable. The dongle alone cannot do it.
-Packet builders are pure functions so tests can pin their exact bytes.
+After enter_bl the mouse comes back as 373E:B046. Data goes out in 32-byte
+packets XOR'd with 0x55, with a longer pause every 4 KB. Every segment gets
+verified at the end, and that's what actually commits the write: skip it and
+the bootloader rolls everything back.
 """
 
 from __future__ import annotations
@@ -36,7 +25,6 @@ PROGRAM_DELAY_4K = 0.005
 VERIFY_DELAY = 0.002
 
 Log = Callable[[str], None]
-# progress(phase, fraction): phase is "erase", "program", "verify" or "reboot".
 Progress = Callable[[str, float], None]
 
 
@@ -47,8 +35,6 @@ def _no_progress(_phase: str, _fraction: float) -> None:
 class FlashError(Exception):
     pass
 
-
-# packet builders (pure)
 
 def enter_bl_packet() -> bytes:
     d = bytearray(64); d[2] = DEVICE_ID; d[3] = 0x01; d[6] = BL_CMD
@@ -95,7 +81,6 @@ def verify_packet(addr: int) -> bytes:
 
 
 def slice_firmware(ih) -> list[tuple[int, bytes]]:
-    """16-byte segments covering minaddr..maxaddr, last one padded with 0xFF."""
     segments = []
     lo, hi = ih.minaddr(), ih.maxaddr()
     addr = lo
@@ -107,7 +92,6 @@ def slice_firmware(ih) -> list[tuple[int, bytes]]:
 
 
 def pair_segments(segments: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
-    """Join neighbouring segments into 32-byte program packets."""
     packets = []
     for i in range(0, len(segments), 2):
         addr, data = segments[i]
@@ -116,8 +100,6 @@ def pair_segments(segments: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
         packets.append((addr, data))
     return packets
 
-
-# transport
 
 def _hid():
     import hid
@@ -178,14 +160,11 @@ def wait_for_device(vid: int, pid: int, timeout: float, log: Log):
 
 
 def visible_devices() -> list[str]:
-    """Human-readable list of Attack Shark HID interfaces, for diagnostics."""
     hid = _hid()
     return [f"VID:{d['vendor_id']:04X} PID:{d['product_id']:04X} "
             f"UP:{d.get('usage_page', 0):04X} U:{d.get('usage', 0):04X}"
             for d in hid.enumerate(0x373E, 0)]
 
-
-# flash
 
 def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _no_progress):
     _send(bl, bl_version_packet())
@@ -230,7 +209,6 @@ def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _n
 
 
 def flash(ih, log: Log = print, allow_unknown: bool = False, progress: Progress = _no_progress) -> None:
-    """Flash an IntelHex image. Raises FlashError on any failure."""
     known = identify(ih)
     if known is None and not allow_unknown:
         raise FirmwareError("Refusing to flash an unrecognized image. Only the stock or "

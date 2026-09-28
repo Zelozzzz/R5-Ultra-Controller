@@ -1,15 +1,11 @@
-"""Validated macro documents and the R5 Ultra's onboard event format.
-
-Opcodes come from the vendor application's ko()/jo() encoder/decoder.
-No hooks, playback, USB access or operating-system input injection lives here.
-"""
+"""Macro steps, and how the mouse stores them."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
 
-MAX_STEPS = 256                 # Dorsal editor limit, not a hardware capacity claim
+MAX_STEPS = 256
 MAX_BYTES = 1280
 MAX_DELAY = 60000
 KEYS = {chr(65 + i): 4 + i for i in range(26)}
@@ -28,7 +24,6 @@ KINDS = ("Key down", "Key up", "Delay", "Mouse down", "Mouse up", "Wheel")
 
 
 class KeyRecorder:
-    """Focused-window key recording, with bounded events and balanced releases."""
 
     def __init__(self):
         self.steps = []

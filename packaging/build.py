@@ -1,16 +1,4 @@
-"""
-Build Dorsal as a real Windows app.
-
-    python packaging/build.py
-
-Produces, in dist/:
-    Dorsal/                          the app folder: Dorsal.exe, dorsal-cli.exe, _internal/
-    Dorsal-<version>-portable.zip    that folder, zipped (no install needed)
-
-The installer (Dorsal-Setup.exe) is then built from dist/Dorsal by
-Inno Setup using packaging/installer.iss; GitHub Actions does both on every
-release tag (see .github/workflows/release.yml).
-"""
+"""Builds Dorsal.exe, dorsal-cli.exe and the portable zip."""
 
 import argparse
 import shutil
@@ -30,14 +18,12 @@ PUBLISHER = "Zelozzzz"
 
 
 def make_icon() -> Path:
-    """Multi-size .ico (16 px for the title bar up to 256 px for Explorer)."""
     path = BUILD / "dorsal.ico"
     app_icon(256).save(path, sizes=[(s, s) for s in (16, 20, 24, 32, 40, 48, 64, 128, 256)])
     return path
 
 
 def make_version_file() -> Path:
-    """Windows version resource: what Explorer shows under Properties > Details."""
     nums = tuple((list(int(x) for x in __version__.split(".")) + [0, 0, 0, 0])[:4])
     path = BUILD / "version.txt"
     path.write_text(f"""VSVersionInfo(
@@ -61,8 +47,6 @@ def make_version_file() -> Path:
 
 
 def patch_python_3_10_0():
-    """Python 3.10.0 has a bug in `dis` (fixed in 3.10.1) that crashes
-    PyInstaller while it scans bytecode. Tolerate the bad constant lookup."""
     import dis
 
     def _get_const_info(const_index, const_list):
@@ -82,8 +66,6 @@ def main():
     parser.add_argument("--dist-dir", type=Path, default=DIST,
                         help="output folder (use a separate folder if a previous build is running)")
     dist = parser.parse_args().dist_dir.resolve()
-    # without a working pywebview the app quietly falls back to the old Tk
-    # window, so a broken install would ship the wrong app. stop instead.
     try:
         __import__("webview")
     except ImportError as exc:
@@ -96,10 +78,9 @@ def main():
     if sys.version_info[:3] == (3, 10, 0):
         patch_python_3_10_0()
         import PyInstaller.__main__
-        PyInstaller.__main__.run(args)          # in-process, so the patch applies
+        PyInstaller.__main__.run(args)
     else:
         subprocess.run([sys.executable, "-m", "PyInstaller", *args], check=True)
-    # Keep the license and setup instructions beside both portable executables.
     for name in ("LICENSE", "README.md", "CHANGELOG.md"):
         shutil.copy2(ROOT / name, dist / APP_NAME / name)
     readme = dist / APP_NAME / "README.md"

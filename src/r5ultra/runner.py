@@ -1,10 +1,4 @@
-"""
-Runs one effect at a time on a background thread.
-
-The runner pulls frames from an effect generator and pushes each color to the
-mouse. If the mouse disappears (dongle asleep, cable pulled), it waits and
-retries instead of dying, so effects resume on their own when the mouse wakes.
-"""
+"""Plays one lighting effect at a time in the background."""
 
 from __future__ import annotations
 
@@ -30,11 +24,10 @@ class EffectRunner:
         self.profile = profile
         self.brightness = brightness
         self.log = log
-        self.on_frame = on_frame   # called with each color after it's sent (live preview)
+        self.on_frame = on_frame
         self.running_key: str | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
-
 
     def start(self, key: str, frames: FramesFn):
         self.stop()
@@ -52,15 +45,14 @@ class EffectRunner:
         self.running_key = None
 
     def _prepare(self, profile: int):
-        """Brightness and 'never sleep' once, before the first frame."""
         with self.mouse:
-            self.mouse.send(p.lightness(profile, 255, self.mouse.wired))    # brightness is done in the color
+            self.mouse.send(p.lightness(profile, 255, self.mouse.wired))
             self.mouse.send(p.sleep_time(profile, p.SLEEP_NEVER))
 
     def _run(self, key: str, frames: FramesFn, stop: threading.Event):
         try:
             self._loop(key, frames(self.ctx), stop)
-        except Exception as exc:          # a bug or missing input inside the effect
+        except Exception as exc:
             self.log(f"Effect {key} stopped: {exc}")
         finally:
             if self._stop is stop:
@@ -69,8 +61,8 @@ class EffectRunner:
     def _loop(self, key: str, generator: Iterator[Frame], stop: threading.Event):
         prepared = False
         offline = False
-        held = False                      # our own open handle on the mouse
-        last = None                       # color the mouse already shows
+        held = False
+        last = None
         try:
             for rgb, hold in generator:
                 if stop.is_set():
@@ -80,23 +72,19 @@ class EffectRunner:
                     color = dim(rgb, self.brightness())
                     if not prepared:
                         self._prepare(profile)
-                        if not held:
-                            # keep the handle for the whole effect: reopening
-                            # it costs ~16 ms a frame
+                        if not held:        # keep it open the whole effect, reopening costs ~16 ms a frame
                             self.mouse.__enter__()
                             held = True
                         self.mouse.push_color(profile, color, set_mode=True)
                         prepared, last = True, color
-                    elif color != last:       # holds and slow fades repeat colors; don't resend them
+                    elif color != last:     # don't resend what the LED already shows
                         self.mouse.push_color(profile, color, set_mode=False)
                         last = color
-                except (OSError, ValueError) as exc:   # hidapi raises both
-                    # Usually the dongle went to sleep or re-enumerated. Back off
-                    # and retry; brightness is re-sent once it's back.
+                except (OSError, ValueError) as exc:   # usually the dongle went to sleep
                     if not offline:
                         self.log(f"Effect {key}: mouse unavailable ({exc}); will resume when it's back")
                         offline = True
-                    self.mouse.reset()            # also drops the handle we held
+                    self.mouse.reset()
                     held = prepared = False
                     if stop.wait(self.RETRY_SECONDS):
                         return

@@ -1,5 +1,4 @@
-"""Is there a newer Dorsal on GitHub? One small request to GitHub's public
-release API; nothing about the PC or the mouse is sent."""
+"""Asks github if there's a newer release."""
 
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ API = REPO_URL.replace("https://github.com/", "https://api.github.com/repos/") +
 
 
 def version_tuple(text: str) -> tuple[int, ...]:
-    """'v1.10' -> (1, 10). Anything that isn't a number is ignored."""
     return tuple(int(n) for n in re.findall(r"\d+", text or ""))
 
 
@@ -22,7 +20,6 @@ def is_newer(remote: str, local: str = __version__) -> bool:
 
 
 def latest(timeout: float = 6.0) -> dict:
-    """{'version': '1.9', 'url': release page} of the newest published release."""
     request = urllib.request.Request(API, headers={"Accept": "application/vnd.github+json",
                                                   "User-Agent": f"Dorsal/{__version__}"})
     with urllib.request.urlopen(request, timeout=timeout) as response:

@@ -1,17 +1,4 @@
-"""
-Software lighting effects.
-
-Each effect is a generator that yields frames: (rgb, seconds_to_hold). The
-effect knows nothing about USB or threads. A runner (the GUI or the CLI) pulls
-frames, pushes each color to the mouse, and waits `seconds_to_hold` or until
-it is told to stop. That split is what lets tests step through an effect
-instantly, with a seeded random generator, and check every frame.
-
-    for rgb, hold in EFFECTS["aurora"].frames(ctx):
-        mouse.push_color(profile, rgb)
-        if stop.wait(hold):
-            break
-"""
+"""Lighting effects, animated here since the mouse's own effects are unreliable."""
 
 from __future__ import annotations
 
@@ -28,14 +15,13 @@ Frame = tuple[RGB, float]
 @dataclass
 class RainbowSettings:
     cycle_seconds: float = 3.0
-    saturation: float = 1.0      # 0..1
-    value: float = 1.0           # 0..1
-    direction: str = "forward"   # forward | reverse | bounce
+    saturation: float = 1.0
+    value: float = 1.0
+    direction: str = "forward"
 
 
 @dataclass
 class EffectContext:
-    """Live inputs an effect may read on every frame."""
     color: Callable[[], RGB] = lambda: (255, 0, 0)
     rainbow: Callable[[], RainbowSettings] = RainbowSettings
     rng: random.Random = field(default_factory=random.Random)
@@ -47,15 +33,11 @@ class EffectInfo:
     name: str
     subtitle: str
     preview: tuple[str, ...]
-    group: str   # ambient | vivid
+    group: str
     frames: Callable[[EffectContext], Iterator[Frame]]
 
 
 def dim(rgb: RGB, brightness: int) -> RGB:
-    """scale a color for the LED. the patched firmware pretty much ignores its
-    own brightness setting, so brightness is done by sending a dimmer color.
-    squared so the slider feels even (eyes don't see LED power linearly);
-    never fully off unless brightness is 0."""
     level = max(0, min(255, int(brightness))) / 255
     if level <= 0:
         return (0, 0, 0)
@@ -77,7 +59,6 @@ def smoothstep(t: float) -> float:
 
 
 def crossfade(stops: list[RGB], t: float, seg_time: float) -> RGB:
-    """Color at time t when cycling through `stops`, seg_time seconds each."""
     n = len(stops)
     seg = int(t // seg_time) % n
     s = smoothstep((t % seg_time) / seg_time)
@@ -85,10 +66,7 @@ def crossfade(stops: list[RGB], t: float, seg_time: float) -> RGB:
     return clamp_rgb(*(c1[i] + (c2[i] - c1[i]) * s for i in range(3)))
 
 
-# vivid
-
 def rainbow(ctx: EffectContext) -> Iterator[Frame]:
-    """Smooth hue cycle at 30 fps; speed/saturation/direction are read live."""
     tick = 1 / 30
     h, bounce_dir = 0.0, 1
     while True:
@@ -107,8 +85,6 @@ def rainbow(ctx: EffectContext) -> Iterator[Frame]:
             h = (h + step) % 1.0
 
 
-# ambient
-
 AURORA_STOPS: list[RGB] = [
     (10, 60, 40), (30, 150, 110), (60, 220, 170),
     (60, 130, 220), (130, 90, 210), (50, 170, 130),
@@ -116,8 +92,6 @@ AURORA_STOPS: list[RGB] = [
 
 
 def aurora(ctx: EffectContext) -> Iterator[Frame]:
-    """Slow drift through aurora colors with a brightening 'curtain' pulse
-    every 7-16 seconds."""
     rng, tick, t = ctx.rng, 1 / 22, 0.0
     next_pulse, pulse_start = rng.uniform(6, 12), -100.0
     while True:
@@ -133,7 +107,6 @@ def aurora(ctx: EffectContext) -> Iterator[Frame]:
 
 
 def breathe(ctx: EffectContext) -> Iterator[Frame]:
-    """8-second breath (4 in, 4 out) in the current Lighting color."""
     tick, t = 1 / 30, 0.0
     while True:
         r, g, b = ctx.color()
@@ -142,7 +115,6 @@ def breathe(ctx: EffectContext) -> Iterator[Frame]:
         t += tick
 
 
-# A few good ones, rather than many: the looks premium mice ship with.
 EFFECTS: dict[str, EffectInfo] = {e.key: e for e in [
     EffectInfo("breathe", "Breathe", "A slow fade in your color",
                ("#11151c", "#ffffff", "#11151c"), "ambient", breathe),

@@ -1,8 +1,4 @@
-"""
-Diagnostics: the measuring and judging logic, kept free of Windows and USB so
-it can be unit-tested. The GUI feeds these classes events (from raw mouse
-input or from pings) and shows their results.
-"""
+"""The measuring bits behind Diagnostics. no USB or Windows in here so it's easy to test."""
 
 from __future__ import annotations
 
@@ -15,18 +11,11 @@ from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 
-SENSOR_MAX_IPS = 750            # PixArt PAW3950MAX rated tracking speed
+SENSOR_MAX_IPS = 750
 SUPPORTED_FIRMWARE = "0.0.12.0"
 
 
-# polling rate
-
 class PollingMeter:
-    """Report rate actually reaching Windows, from raw-input event times.
-
-    Rate only means something while the mouse moves (an idle mouse sends
-    nothing), so each short window counts only if it's fully "in motion":
-    events kept arriving with no gap longer than `gap`."""
 
     def __init__(self, window: float = 0.1, gap: float = 0.02):
         self.window, self.gap = window, gap
@@ -35,7 +24,7 @@ class PollingMeter:
 
     def feed(self, t: float):
         times = self._times
-        if times and t - times[-1] > self.gap:  # the mouse stopped: start fresh
+        if times and t - times[-1] > self.gap:
             times.clear()
         times.append(t)
         if times[-1] - times[0] >= self.window:
@@ -58,18 +47,12 @@ class PollingMeter:
 
     @property
     def stability(self) -> float:
-        """1.0 = every window reached the same rate; lower = unsteady."""
         if len(self.samples) < 3 or not self.average:
             return 0.0
         return max(0.0, 1.0 - statistics.pstdev(self.samples) / self.average)
 
 
 class IntervalMeter:
-    """Recent movement arrival intervals observed by Windows, not USB timing.
-
-    Gaps above 20 ms are pauses, retained as a count but excluded from interval
-    percentiles. Bounded storage keeps long-running captures lightweight.
-    """
 
     def __init__(self, limit=8192):
         self.samples = deque(maxlen=limit)
@@ -96,12 +79,10 @@ class IntervalMeter:
 
 
 def judge_polling(measured: float, configured: int) -> tuple[str, str]:
-    """(verdict, explanation) comparing the measured rate to the setting."""
     if measured < 50:
         return "no data", "Move the mouse in quick circles while the test runs."
     ratio = measured / configured
     if ratio >= 1.5:
-        # More reports than the setting allows: the mouse is running other settings.
         return "mismatch", (f"About {measured:,.0f} Hz arrive, more than the {configured:,} Hz shown here. The mouse "
                             "is probably on another onboard profile, or this setting hasn't been applied yet.")
     if ratio >= 0.85:
@@ -113,10 +94,7 @@ def judge_polling(measured: float, configured: int) -> tuple[str, str]:
                    "move the dongle closer, and make sure the setting was applied.")
 
 
-# sensor speed
-
 class SpeedMeter:
-    """Peak tracking speed in inches per second: counts per second ÷ DPI."""
 
     def __init__(self, dpi: int, window: float = 0.01):
         self.dpi, self.window = max(1, dpi), window
@@ -125,8 +103,6 @@ class SpeedMeter:
         self.peak_ips = 0.0
 
     def feed(self, t: float, dx: int, dy: int):
-        # A report's counts describe movement since the previous report, so
-        # the report that opens a window doesn't belong to it.
         if self._start is None:
             self._start = t
             return
@@ -136,8 +112,6 @@ class SpeedMeter:
             self.peak_ips = max(self.peak_ips, self._counts / span / self.dpi)
             self._start, self._counts = t, 0.0
 
-
-# clicks
 
 BUTTONS = ("Left", "Right", "Middle", "Back", "Forward")
 
@@ -151,11 +125,6 @@ class ButtonStats:
 
 
 class ChatterDetector:
-    """Flag rapid release-to-press intervals for investigation.
-
-    Macros, deliberate rapid clicks and software can also cause these events;
-    this heuristic cannot establish a mechanical switch fault.
-    """
 
     def __init__(self, threshold_ms: float = 25.0):
         self.threshold_ms = threshold_ms
@@ -174,8 +143,6 @@ class ChatterDetector:
         else:
             stats.last_up = t
 
-
-# wireless link
 
 @dataclass
 class LinkTestResult:
@@ -212,10 +179,8 @@ class LinkTestResult:
 
 
 def run_link_test(mouse, count: int = 200, progress=None, stop=None) -> LinkTestResult:
-    """Ping the mouse `count` times, back to back (see R5Mouse.ping)."""
     from . import protocol as p
     result = LinkTestResult()
-    # Keep the handle open for the whole test: reopening it costs ~100 ms a ping.
     with mouse if hasattr(mouse, "__enter__") else contextlib.nullcontext():
         _ping_loop(mouse, count, progress, stop, result, p)
     return result
@@ -237,10 +202,8 @@ def _ping_loop(mouse, count, progress, stop, result, p):
         if progress:
             progress(i + 1, count)
         if i >= 9 and result.answered == 0:
-            break                            # asleep or out of range: don't wait out every timeout
+            break
 
-
-# HID traffic
 
 REPLY_STATUS = {0xA1: "OK", 0xA0: "no mouse", 0xA2: "rejected", 0xA3: "unsupported"}
 _ONBOARD = {(2, 3, 0x00): "Set button", (2, 3, 0x80): "Get button", (2, 4, 0x01): "Allocate macro slot",
@@ -250,8 +213,6 @@ _names: dict | None = None
 
 
 def _command_names() -> dict:
-    """(device, category, command) -> name, taken from the packet builders
-    themselves so the names can't drift from what's actually sent."""
     global _names
     if _names is None:
         from . import protocol as p
@@ -283,7 +244,6 @@ def _command_names() -> dict:
 
 
 def describe_packet(payload: bytes) -> str:
-    """A readable name for a 64-byte request, e.g. 'Get battery'."""
     if len(payload) < 6:
         return "short packet"
     key = (payload[2], payload[4], payload[5])
@@ -291,9 +251,6 @@ def describe_packet(payload: bytes) -> str:
 
 
 def describe_status(reply: bytes, status: str) -> str:
-    """The reply's status as the app judged it. A reply that answers some
-    other command (another program talking to the mouse, or a late reply)
-    is called out rather than shown as a success."""
     if status == "sent":
         return "no reply requested"
     if status == "mismatch":
@@ -306,30 +263,19 @@ def describe_status(reply: bytes, status: str) -> str:
 
 
 def hex_bytes(data: bytes, limit: int = 16) -> str:
-    """Leading bytes as hex; trailing zero padding is left out."""
     data = bytes(data).rstrip(b"\x00")
     shown = " ".join(f"{b:02X}" for b in data[:limit])
     return shown + (" …" if len(data) > limit else "")
 
 
-# other mouse software
-
 def find_conflicts(process_names, dorsal_copies: int = 0) -> list[str]:
-    """Running programs that also talk to the mouse: the official app holds
-    the same HID interface and re-applies its own settings, and a second
-    Dorsal would interleave its commands with ours (replies get crossed)."""
     found = sorted(n for n in process_names if "attack shark" in n.lower() or "attackshark" in n.lower())
     if dorsal_copies > 0:
         found.append("another copy of Dorsal" if dorsal_copies == 1 else f"{dorsal_copies} other copies of Dorsal")
     return found
 
 
-# battery life
-
-
 class BatteryHistory:
-    """Keeps (time, percent) samples while on battery and estimates how long
-    the charge will last from the recent discharge rate."""
 
     KEEP_SECONDS = 7 * 24 * 3600
 
@@ -345,9 +291,9 @@ class BatteryHistory:
     def add(self, percent: int, charging: bool, now: float | None = None):
         now = time.time() if now is None else now
         if charging:
-            self.points.clear()              # a new discharge starts after charging
+            self.points.clear()
         elif self.points and percent > self.points[-1][1] + 1:
-            self.points = [(now, percent)]   # charged while Dorsal wasn't watching
+            self.points = [(now, percent)]
         elif not self.points or self.points[-1][1] != percent or now - self.points[-1][0] > 1800:
             self.points.append((now, percent))
             self.points = [(t, p) for t, p in self.points if now - t <= self.KEEP_SECONDS]
@@ -362,8 +308,6 @@ class BatteryHistory:
                 pass
 
     def drain_per_hour(self) -> float | None:
-        """Percent per hour over the last 12 h of discharge (a least-squares
-        fit), or None until there's at least a 3% drop over 30 minutes."""
         if len(self.points) < 2:
             return None
         recent = [(t, p) for t, p in self.points if self.points[-1][0] - t <= 12 * 3600]
@@ -373,7 +317,7 @@ class BatteryHistory:
         mt = statistics.fmean(t for t, _ in recent)
         mp = statistics.fmean(p for _, p in recent)
         var = sum((t - mt) ** 2 for t, _ in recent)
-        slope = sum((t - mt) * (p - mp) for t, p in recent) / var if var else 0.0   # % per second
+        slope = sum((t - mt) * (p - mp) for t, p in recent) / var if var else 0.0
         return -slope * 3600 if slope < 0 else None
 
     def hours_left(self, percent: int) -> float | None:
@@ -381,20 +325,17 @@ class BatteryHistory:
         return percent / rate if rate else None
 
 
-# health check
-
 OK, WARN, FAIL = "ok", "warn", "fail"
 
 
 @dataclass
 class Check:
-    status: str      # ok | warn | fail
+    status: str
     title: str
     detail: str = ""
 
 
 def settings_evidence(settings, expected: dict) -> list[dict]:
-    """Compare fresh device values with the editor, without applying either."""
     specs = (("polling", "Polling rate", settings.polling),
              ("stage_dpis", "DPI stages (X / Y)", settings.stage_dpis),
              ("active_stage", "Active DPI stage", settings.active_stage),
@@ -429,12 +370,7 @@ def settings_evidence(settings, expected: dict) -> list[dict]:
     return rows
 
 
-# read-only probes
-
 from . import protocol as _p  # noqa: E402
-
-# Read-only probes: (label, packet builder(profile), decoder(reply) -> text).
-# Nothing here changes a setting on the mouse.
 
 
 def _byte_probe(name, fmt=str):

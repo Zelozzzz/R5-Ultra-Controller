@@ -1,14 +1,4 @@
-"""
-The firmware wizard: the friendly front door to the flasher.
-
-Run by flash.bat and `dorsal firmware wizard`. Inside the app, Settings →
-Install firmware… does the same with a window (firmware_ui.py).
-It never uses firmware downloaded from this repo. It asks for YOUR copy of
-the official Attack Shark software (installer, app.asar, or the stock .hex
-inside it), checks it's the exact version the patch was made for, builds
-the patched image locally, and flashes it after one explicit confirmation.
-It can also put the stock firmware back.
-"""
+"""Console firmware wizard."""
 
 import sys
 import time
@@ -18,8 +8,6 @@ from . import APP_NAME
 from .config import config_dir
 from .winapp import is_frozen
 
-# Built firmware goes next to the source tree when running from source, or
-# into Dorsal's settings folder when installed (Program Files isn't writable).
 FW_DIR = config_dir() / "firmware" if is_frozen() else Path(__file__).resolve().parent.parent.parent / "firmware"
 PATCHED = FW_DIR / "r5_patched.hex"
 STOCK = FW_DIR / "r5_stock.hex"
@@ -146,7 +134,6 @@ def main():
 
 
 def run():
-    """Entry point: the wizard, with Ctrl+C handled politely."""
     try:
         main()
     except KeyboardInterrupt:

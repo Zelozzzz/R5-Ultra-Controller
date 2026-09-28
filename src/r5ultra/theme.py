@@ -1,12 +1,10 @@
-"""Themes. The page's colors live in web/app.css; this is the rest: the title
-bar color, the tray icon accent, and the recipe for each backdrop picture."""
+"""The three themes. the page colors are in web/app.css, this is the backdrop recipes and window colors."""
 
 from __future__ import annotations
 
 THEMES = {
     "aura": {
         "frame": "#050807", "accent": "#72e99a",
-        # deep water lit from above
         "backdrop": {
             "top": (8, 27, 38), "bottom": (2, 6, 9),
             "surface": ((60, 170, 190), 0.55),
@@ -22,7 +20,6 @@ THEMES = {
     },
     "ember": {
         "frame": "#120b0a", "accent": "#ff7a2f",
-        # orange light from below fading into deep red, embers rising
         "backdrop": {
             "top": (18, 9, 8), "bottom": (3, 1, 1),
             "surface": ((110, 40, 20), 0.30),

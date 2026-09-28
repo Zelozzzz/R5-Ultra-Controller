@@ -90,3 +90,16 @@ def test_leaving_input_tab_cancels_pending_start(controller, monkeypatch):
     controller.stop_input_test()
     jobs[0](MouseSettings(polling="1000 Hz", active_stage=1, stage_dpis=[(800, 800)]))
     assert controller._raw is None
+
+
+def test_capture_latches_dpi_stage_change_and_suppresses_speed(controller):
+    controller._input_started = 1
+    controller.input_profile = controller.profile
+    controller.input_epoch = controller._connection_epoch
+    controller.input_stage = controller.active_stage
+    controller.input_dpi = 800
+    controller.active_stage = 2
+    assert controller.input_view()["invalid"]
+    assert controller.input_view()["ips"] is None
+    controller.active_stage = controller.input_stage
+    assert controller.input_view()["invalid"]  # returning to the old DPI cannot repair mixed samples

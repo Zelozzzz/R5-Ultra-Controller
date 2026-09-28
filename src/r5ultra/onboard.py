@@ -1,8 +1,4 @@
-"""Button and macro operations from the vendor HID protocol.
-
-Reads must match the category, profile/button or macro slot/offset. Writes are
-verified by reading the stored value, not by trusting an acknowledgment alone.
-"""
+"""Button assignments and the 3 macro slots, stored on the mouse itself."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,17 +42,14 @@ ACTIONS.update({"Scroll up": Binding(1, b"\x10"), "Scroll down": Binding(1, b"\x
                 "Double click": Binding(2, bytes([1, 1, 2, 0, 100])),
                 "DPI cycle": Binding(7, b"\x06"), "DPI up": Binding(7, b"\x01"),
                 "DPI down": Binding(7, b"\x02"), "Disabled": Binding(0)})
-# cycling actions from the official app's button menu (LoopUp = 3)
 ACTIONS.update({"Profile cycle": Binding(8, b"\x03"), "Polling rate cycle": Binding(13, b"\x03"),
                 "Lift-off cycle": Binding(14, b"\x03")})
-# consumer-control codes, same list as the official app
 for _name, _code in (("Play / pause", 205), ("Stop", 183), ("Next track", 181), ("Previous track", 182),
                      ("Volume up", 233), ("Volume down", 234), ("Mute", 226), ("Media player", 387),
                      ("Calculator", 402), ("My computer", 404), ("File explorer", 406), ("Email", 394),
                      ("Browser home", 547), ("Browser refresh", 551)):
     ACTIONS[_name] = Binding(5, _code.to_bytes(2, "big"))
 
-# how an onboard macro plays: the three modes the firmware has
 MACRO_MODES = {"times": 16, "hold": 17, "toggle": 18}
 
 
@@ -65,8 +58,6 @@ def key_binding(text: str) -> Binding:
 
 
 def macro_binding(slot: int, repeats: int = 1, mode: str = "times") -> Binding:
-    """times: play it `repeats` times. hold: repeat while the button is held.
-    toggle: repeat until the button is pressed again."""
     _slot(slot)
     if mode not in MACRO_MODES:
         raise ValueError("Unknown macro playback mode.")
@@ -78,7 +69,6 @@ def macro_binding(slot: int, repeats: int = 1, mode: str = "times") -> Binding:
 
 
 def dpi_lock_binding(dpi: int) -> Binding:
-    """lock the mouse to one DPI (the official app's "DPI lock")."""
     dpi = int(dpi)
     if not p.DPI_MIN <= dpi <= p.DPI_MAX:
         raise ValueError(f"DPI has to be between {p.DPI_MIN} and {p.DPI_MAX:,}.")
@@ -150,8 +140,6 @@ class Onboard:
                        and response[7:7 + extra] == request[6:6 + extra])
             if ack.ok and matches:
                 return response
-            # Captured R5 Ultra response for an unallocated macro slot:
-            # 00 a2 00 02 06 04 81 00 01 00 00 00 00 ...
             if (empty_slot and matches and response[1] == 0xA2
                     and len(response) >= 13 and response[9:13] == bytes(4)):
                 return response
@@ -161,8 +149,6 @@ class Onboard:
                 raise OSError("Mouse did not confirm the operation. Wake it and try again.")
             time.sleep(0.01)
             if time.monotonic() >= resend_at:
-                # All operations here are idempotent. Re-send if another app
-                # consumed the reply or the wireless link was briefly asleep.
                 response = self.mouse.send(request)
                 resend_at = time.monotonic() + 0.15
             else:

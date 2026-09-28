@@ -1,13 +1,4 @@
-"""
-Dorsal's window: HTML and CSS (web/) drawn by Windows' built-in WebView2
-through pywebview, driven by core.Controller.
-
-The page never talks to the mouse. It calls the methods of `Api` (exposed to
-JavaScript as window.pywebview.api) and redraws from the state this module
-pushes to it: `dorsal.state(...)` whenever the controller changes and
-`dorsal.frame(...)` with the LED's current color, up to 30 times a second.
-Glass, blur, shadows and the mouse's light are all done by the GPU.
-"""
+"""The window: web/ shown by WebView2 through pywebview, plus the tray."""
 
 from __future__ import annotations
 
@@ -28,12 +19,11 @@ from .effects import EFFECTS
 
 WEB = Path(__file__).resolve().parent / "web"
 DOCS = winapp.resource_root() / "docs"
-ASSET_VERSION = "6"             # bump when scenery output changes, to re-render cached images
+ASSET_VERSION = "6"     # bump when the rendered pictures change
 MOUSE_SIZE = (520, 840)
 
 
 def webview2_available() -> bool:
-    """Windows 11 ships the WebView2 runtime; some Windows 10 PCs don't have it."""
     import winreg
     guid = r"{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
     for root, path in ((winreg.HKEY_LOCAL_MACHINE, rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{guid}"),
@@ -49,11 +39,7 @@ def webview2_available() -> bool:
     return False
 
 
-# the page's files and images
-
 class Site:
-    """The folder the page is loaded from: the files in web/ plus images
-    rendered for this PC (backdrop, lit mouse), cached between launches."""
 
     def __init__(self):
         self.root = config.config_dir() / "ui"
@@ -61,10 +47,8 @@ class Site:
         for item in WEB.iterdir():
             if item.is_file():
                 shutil.copy(item, self.root / item.name)
-        # WebView2 keeps a disk cache between launches. Stamp the stylesheet and
-        # script with a fingerprint of their contents, so an update is never
-        # drawn with last version's files.
         page = (self.root / "index.html").read_text(encoding="utf-8")
+        # WebView2 caches files between launches, so the urls carry a hash of the file
         for name in ("app.css", "app.js"):
             stamp = hashlib.sha1((self.root / name).read_bytes()).hexdigest()[:10]
             page = page.replace(f'"{name}"', f'"{name}?v={stamp}"')
@@ -85,7 +69,6 @@ class Site:
         return name
 
     def ambient(self) -> dict:
-        """Textures for the moving layer over the backdrop: caustics and snow."""
         from .scenery import caustic_tile, snow_tile
         made = {}
         with self._lock:
@@ -119,23 +102,20 @@ class Site:
                     layers[part].save(self.root / f"mouse-{stamp}-{part}.png", optimize=True)
                 meta.write_text(json.dumps({"box": layers["box"]}))
             box = json.loads(meta.read_text())["box"]
-            # The light masks go inline: WebView2 won't load a CSS mask image by URL here.
             self._mouse = {"base": f"mouse-{stamp}-base.png", "box": box}
+            # the light masks go in as data urls, WebView2 won't load css masks by url here
             for part in ("glow", "core"):
                 data = (self.root / f"mouse-{stamp}-{part}.png").read_bytes()
                 self._mouse[part] = "data:image/png;base64," + base64.b64encode(data).decode()
             return self._mouse
 
 
-# the bridge JavaScript calls
-
 def _safe(fn):
-    """Exceptions come back to the page as {"error": message}, never as a crash."""
     def wrapper(self, *args):
         try:
             result = fn(self, *args)
             return {"ok": True, "value": result}
-        except Exception as exc:          # anything: a bad value, a missing file, the mouse vanished
+        except Exception as exc:
             return {"ok": False, "error": str(exc) or exc.__class__.__name__}
     wrapper.__name__ = fn.__name__
     wrapper.__doc__ = fn.__doc__
@@ -143,13 +123,11 @@ def _safe(fn):
 
 
 class Api:
-    """Everything the page can ask for. Names starting with _ are not exposed."""
 
     def __init__(self, ui: "WebUI"):
         self._ui = ui
         self._c = ui.ctrl
 
-    # page lifecycle
     @_safe
     def hello(self):
         self._ui.page_ready = True
@@ -167,7 +145,6 @@ class Api:
     def take_notice(self, notice_id):
         self._c.take_notice(notice_id)
 
-    # lighting and settings
     @_safe
     def competitive_mode(self, enabled=None):
         self._c.competitive_mode(enabled)
@@ -216,7 +193,6 @@ class Api:
     def reset_profile(self):
         self._c.reset_profile()
 
-    # buttons
     @_safe
     def read_bindings(self):
         self._c.read_bindings()
@@ -225,7 +201,6 @@ class Api:
     def write_binding(self, code, action, shortcut="", slot=1, repeats=1, mode="times", macro_id=None, dpi=0):
         self._c.write_binding(code, action, shortcut, slot, repeats, mode, macro_id, dpi)
 
-    # macros
     @_safe
     def macro_step(self, kind, value):
         return self._c.macro_step(kind, value)
@@ -274,7 +249,6 @@ class Api:
     def set_unsaved(self, unsaved):
         self._ui.unsaved_macro = bool(unsaved)
 
-    # profiles
     @_safe
     def save_profile(self, name, item_id=None):
         return self._c.save_profile(name, item_id)
@@ -305,7 +279,6 @@ class Api:
     def delete_profile(self, item_id):
         self._c.delete_profile(item_id)
 
-    # diagnostics
     @_safe
     def health(self):
         self._c.run_health_check()
@@ -356,7 +329,6 @@ class Api:
             self._c.export_session(path)
         return bool(path)
 
-    # firmware installer
     @_safe
     def firmware_open(self):
         self._c.firmware_open()
@@ -377,7 +349,6 @@ class Api:
     def firmware_install(self, restore=False):
         self._c.firmware_install(bool(restore))
 
-    # app
     @_safe
     def set_startup(self, enabled):
         self._c.set_startup(enabled)
@@ -431,7 +402,6 @@ class Api:
 
 
 def copy_to_clipboard(text: str):
-    """Plain Win32 clipboard: the page's own clipboard API needs a secure origin."""
     u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
     k32.GlobalAlloc.restype = ctypes.c_void_p
     k32.GlobalLock.restype = ctypes.c_void_p
@@ -447,15 +417,13 @@ def copy_to_clipboard(text: str):
         raise OSError("The clipboard is busy")
     try:
         u32.EmptyClipboard()
-        handle = k32.GlobalAlloc(0x0002, len(data))            # GMEM_MOVEABLE
+        handle = k32.GlobalAlloc(0x0002, len(data))
         ctypes.memmove(k32.GlobalLock(handle), data, len(data))
         k32.GlobalUnlock(handle)
-        u32.SetClipboardData(13, handle)                       # CF_UNICODETEXT
+        u32.SetClipboardData(13, handle)
     finally:
         u32.CloseClipboard()
 
-
-# is anything in front of us?
 
 _SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
                   "Windows.UI.Core.CoreWindow", "XamlExplorerHostIslandWindow",
@@ -466,7 +434,6 @@ def _window_rect(hwnd: int):
     class RECT(ctypes.Structure):
         _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]
     r = RECT()
-    # the visible frame; GetWindowRect includes the invisible resize border
     if ctypes.windll.dwmapi.DwmGetWindowAttribute(ctypes.c_void_p(hwnd), 9, ctypes.byref(r), ctypes.sizeof(r)):
         if not ctypes.windll.user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(r)):
             return None
@@ -474,10 +441,6 @@ def _window_rect(hwnd: int):
 
 
 def covered_by_foreground(ours: int) -> bool:
-    """True when the active window (a game, a maximized browser...) sits on
-    top of all of Dorsal's window, so nobody can see the page. Windows that
-    might be see-through (layered, cloaked, the desktop, the taskbar, the
-    alt-tab screen) never count."""
     u32 = ctypes.windll.user32
     u32.GetForegroundWindow.restype = ctypes.c_void_p
     try:
@@ -492,7 +455,7 @@ def covered_by_foreground(ours: int) -> bool:
         u32.GetClassNameW(ctypes.c_void_p(fg), name, 128)
         if name.value in _SHELL_CLASSES:
             return False
-        if u32.GetWindowLongW(ctypes.c_void_p(fg), -20) & (0x80000 | 0x20):   # WS_EX_LAYERED | WS_EX_TRANSPARENT
+        if u32.GetWindowLongW(ctypes.c_void_p(fg), -20) & (0x80000 | 0x20):
             return False
         cloaked = ctypes.c_int(0)
         ctypes.windll.dwmapi.DwmGetWindowAttribute(ctypes.c_void_p(fg), 14, ctypes.byref(cloaked), 4)
@@ -506,8 +469,6 @@ def covered_by_foreground(ours: int) -> bool:
         return False
 
 
-# the window
-
 class WebUI:
     def __init__(self, ctrl: Controller, start_hidden: bool = False):
         import webview
@@ -519,7 +480,7 @@ class WebUI:
         self._quitting = False
         self._running = True
         self.hidden = start_hidden
-        self.covered = False              # another window is fully on top of ours
+        self.covered = False
         self._hwnd_cached: int | None = None
         ctrl.ui_visible = not start_hidden
         threading.Thread(target=self._warm, daemon=True).start()
@@ -528,7 +489,6 @@ class WebUI:
             min_size=(1100, 720), background_color="#0c0605", hidden=start_hidden, text_select=False)
         self.window.events.closing += self._on_closing
         self.window.events.shown += self._on_shown
-        # minimized counts as hidden too, so the page stops drawing
         self.window.events.minimized += lambda: self._set_hidden(True)
         self.window.events.restored += lambda: self._set_hidden(False)
         self.window.events.maximized += lambda: self._set_hidden(False)
@@ -536,7 +496,6 @@ class WebUI:
         ctrl.on_low_battery = self._notify
 
     def _warm(self):
-        """Render the images the page asks for first, before it asks."""
         try:
             self.site.backdrop(self.ctrl.theme)
             self.site.ambient()
@@ -551,17 +510,13 @@ class WebUI:
         return s
 
     def _on_shown(self):
-        self._hwnd_cached = self._hwnd()        # read here, on the window's own thread
+        self._hwnd_cached = self._hwnd()
         self.style_titlebar()
 
     def run(self):
         self.ctrl.start()
         threading.Thread(target=self._pusher, daemon=True, name="ui-pusher").start()
         threading.Thread(target=self._cover_watch, daemon=True, name="cover-watch").start()
-        # Served over pywebview's local HTTP server (127.0.0.1 only): CSS masks,
-        # which light the mouse, aren't allowed to load from file:// pages.
-        # Private mode: no browser cache on disk, so an updated Dorsal is never
-        # drawn with the previous version's page. (Settings live in config.json.)
         self.webview.start(gui="edgechromium", http_server=True, private_mode=True)
 
     def _js(self, code: str):
@@ -569,12 +524,11 @@ class WebUI:
         run(code)
 
     def _pusher(self):
-        """Send state changes (at most ~12/s) and the LED color (up to 30/s)."""
         last_rev, last_frame, last_push = -1, None, 0.0
         while self._running:
             time.sleep(1 / 30)
             if not self.page_ready or self.hidden or self.covered:
-                last_rev, last_frame = -1, None     # send everything fresh once it's back
+                last_rev, last_frame = -1, None
                 continue
             try:
                 now = time.monotonic()
@@ -591,10 +545,8 @@ class WebUI:
                     return
                 time.sleep(0.5)
 
+    # when a game or any full window covers ours, stop drawing. the last frame stays up
     def _cover_watch(self):
-        """Pause the page's drawing while another window covers all of it
-        (e.g. a game). The last frame stays on screen, so coming back looks
-        exactly the same, it just stops costing anything in between."""
         while self._running:
             time.sleep(0.25)
             hwnd = self._hwnd_cached
@@ -608,8 +560,6 @@ class WebUI:
                     self._js(f"window.dorsal && dorsal.covered({'true' if covered else 'false'})")
                 except Exception:
                     pass
-
-    # files
 
     def _dialog(self, kind: str):
         fd = getattr(self.webview, "FileDialog", None)
@@ -627,8 +577,6 @@ class WebUI:
             return None
         return result if isinstance(result, str) else result[0]
 
-    # title bar, tray, closing
-
     def _hwnd(self) -> int | None:
         try:
             return int(self.window.native.Handle.ToInt64())
@@ -636,7 +584,6 @@ class WebUI:
             return None
 
     def style_titlebar(self):
-        """Windows 11: a dark title bar in the theme's color."""
         hwnd = self._hwnd()
         if not hwnd:
             return
@@ -646,9 +593,9 @@ class WebUI:
         color = ctypes.c_int(r | (g << 8) | (b << 16))
         dwm = ctypes.windll.dwmapi
         try:
-            dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(ctypes.c_int(1)), 4)     # dark mode
-            dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), 4)               # caption
-            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(color), 4)               # border
+            dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(ctypes.c_int(1)), 4)
+            dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), 4)
+            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(color), 4)
         except OSError:
             pass
 
@@ -690,14 +637,12 @@ class WebUI:
         self.style_titlebar()
 
     def hide_to_tray(self):
-        # the page only notices while the window is still up, so this goes first
         self._set_hidden(True)
         self.window.hide()
 
+    # hiding the window doesn't tell WebView2, so the page kept animating in the tray.
+    # hiding the browser control does, as long as it happens before the window hides
     def _set_hidden(self, hidden: bool):
-        """Hiding the window doesn't tell WebView2, so the page kept animating
-        in the tray (~40% of a core). Hiding the browser control does: the
-        page gets visibilityState "hidden" and stops drawing."""
         self.hidden = hidden
         self.ctrl.ui_visible = not hidden
         try:
@@ -707,7 +652,6 @@ class WebUI:
             def apply():
                 view.Visible = not hidden
                 try:
-                    # hidden: let WebView2 hand back memory it can rebuild on show
                     from Microsoft.Web.WebView2.Core import CoreWebView2MemoryUsageTargetLevel as Level
                     view.CoreWebView2.MemoryUsageTargetLevel = Level.Low if hidden else Level.Normal
                 except Exception:
@@ -759,7 +703,7 @@ def main(argv: list[str] | None = None):
     import argparse
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--tray", action="store_true", help="start hidden in the system tray")
-    parser.add_argument("--after", type=int, metavar="PID", help=argparse.SUPPRESS)   # used by restart
+    parser.add_argument("--after", type=int, metavar="PID", help=argparse.SUPPRESS)
     args, rest = parser.parse_known_args(argv)
     if not webview2_available():
         _ask_for_webview2()
@@ -768,7 +712,7 @@ def main(argv: list[str] | None = None):
         winapp.wait_for_exit(args.after)
     instance = winapp.SingleInstance()
     if not instance.acquired:
-        return            # Dorsal is already running; it has been asked to show itself
+        return
     winapp.set_app_id()
     config.migrate_old_dir()
     ui = WebUI(Controller(), start_hidden=args.tray and _has_tray())
@@ -785,10 +729,9 @@ def _has_tray() -> bool:
 
 
 def _ask_for_webview2():
-    # Windows 11 always has it, some older Windows 10 installs don't
     text = (f"{APP_NAME} needs Microsoft Edge WebView2, which isn't on this PC.\n\n"
             "Open Microsoft's download page? Install the \"Evergreen Bootstrapper\", then start Dorsal again.")
-    if ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x4 | 0x30) == 6:     # yes/no, warning; 6 = yes
+    if ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x4 | 0x30) == 6:
         import webbrowser
         webbrowser.open("https://developer.microsoft.com/microsoft-edge/webview2/")
 

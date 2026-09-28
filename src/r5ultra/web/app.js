@@ -1,7 +1,6 @@
-/* Dorsal's page. Python (webui.py) pushes state with dorsal.state(...) and
-   the LED color with dorsal.frame(...); clicks go back through
-   window.pywebview.api. The page keeps only what's being edited (the macro
-   editor, a text field) and otherwise draws exactly what the state says. */
+// python (webui.py) pushes the state with dorsal.state() and the LED color with
+// dorsal.frame(), and clicks go back through window.pywebview.api. the page only
+// keeps what's being edited, everything else is drawn straight from the state
 "use strict";
 
 const $ = (s, root = document) => root.querySelector(s);
@@ -9,7 +8,7 @@ const $$ = (s, root = document) => [...root.querySelectorAll(s)];
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const PRESET_COLORS = ["#FF0000", "#FF6A00", "#FFD000", "#00FF66", "#00D5FF", "#0055FF", "#8B3DFF", "#FF2D95", "#FFFFFF"];
 const BUTTON_NAMES = { 1: "Left click", 2: "Right click", 3: "Wheel click", 4: "Back", 5: "Forward" };
-// Where each button's callout ends, as fractions of the mouse's outline, and which side its label is on.
+// where each button's line ends on the mouse (fractions of the outline) and which side the label goes
 const CALLOUTS = [[1, "left", .30, .10], [3, "left", .50, .21], [5, "left", .02, .37],
                   [4, "left", .02, .48], [2, "right", .70, .10], [0, "right", .97, .56]];
 
@@ -51,7 +50,9 @@ window.addEventListener("error", (e) => { console.error(e.message); });
 // dialogs and toasts
 
 function toast(text, tone = "") {
+  $(".toast")?.remove();
   const t = document.createElement("div");
+  t.setAttribute("role", tone === "err" ? "alert" : "status");
   t.className = `toast glass ${tone ? "c-" + tone : ""}`;
   t.textContent = text;
   document.body.appendChild(t);
@@ -94,8 +95,7 @@ function frame(r, g, b, level) {
   const peak = Math.max(r, g, b);
   const strength = peak ? Math.pow(peak / 255, .6) * level : 0;
   const k = peak ? 255 / peak : 0;
-  // An LED looks brighter than its raw color: lift the channels a little toward
-  // white so deep colors (pure blue especially) still read as light, not shadow.
+  // a real LED looks brighter than its color, so lift it toward white a bit (pure blue looked like a shadow)
   const lift = (c) => Math.round(c * k + (255 - c * k) * .16);
   const root = document.documentElement.style;
   root.setProperty("--led", `${lift(r)}, ${lift(g)}, ${lift(b)}`);
@@ -151,6 +151,15 @@ function notched(host, values, current, onPick, labels = values) {
   if (host.dataset.key === key) return;
   host.dataset.key = key;
   const idx = Math.max(0, values.indexOf(current));
+  host.tabIndex = 0;
+  host.setAttribute("role", "slider");
+  host.setAttribute("aria-label", host.dataset.setting === "polling" ? "Polling rate" : "Lift-off distance");
+  host.setAttribute("aria-valuemin", "0"); host.setAttribute("aria-valuemax", String(n - 1));
+  host.setAttribute("aria-valuenow", String(idx)); host.setAttribute("aria-valuetext", String(labels[idx]));
+  host.onkeydown = (e) => {
+    const next = {ArrowRight: idx + 1, ArrowUp: idx + 1, ArrowLeft: idx - 1, ArrowDown: idx - 1, Home: 0, End: n - 1}[e.key];
+    if (next !== undefined) { e.preventDefault(); onPick(values[Math.max(0, Math.min(n - 1, next))]); }
+  };
   host.innerHTML = `<div class="track"></div><div class="fill" style="width:${n > 1 ? idx / (n - 1) * 100 : 0}%"></div>` +
     values.map((v, i) => `<div class="notch ${v === current ? "on" : ""}" style="left:${n > 1 ? i / (n - 1) * 100 : 50}%"><span>${esc(labels[i])}</span><i></i></div>`).join("");
   host.onpointerdown = (e) => {
@@ -174,7 +183,7 @@ function layoutCallouts(host, art, onClick, selected = null, withLabels = false)
   const box = A.mouse.box;
   const hr = host.getBoundingClientRect(), box0 = art.getBoundingClientRect();
   if (!box0.width) return;
-  // Where the photo really is inside its box (it's centered, never stretched).
+  // where the photo actually sits in its box
   const ratio = 520 / 840;
   const w = Math.min(box0.width, box0.height * ratio), h = w / ratio;
   const ar = { left: box0.left + (box0.width - w) / 2, top: box0.top + (box0.height - h) / 2, width: w, height: h };
@@ -188,7 +197,6 @@ function layoutCallouts(host, art, onClick, selected = null, withLabels = false)
     const remapped = b && b.label && b.label !== BUTTON_NAMES[code];
     const x0 = side === "left" ? pad : px, x1 = side === "left" ? px : hr.width - pad;
     const cls = `callout ${remapped ? "remapped" : ""} ${selected === code ? "on" : ""}`;
-    // Buttons page: the button's name, plus what it does when that isn't its default.
     const name = withLabels && code ? BUTTON_NAMES[code] + (remapped ? ` → ${label}` : "") : label;
     const sub = "";
     html += `<div class="${cls}" data-code="${code}" style="left:${x0}px;top:${py - 30}px;width:${x1 - x0}px;height:34px">
@@ -199,7 +207,12 @@ function layoutCallouts(host, art, onClick, selected = null, withLabels = false)
   host.innerHTML = html;
   $$(".callout", host).forEach((c) => {
     const code = +c.dataset.code;
-    if (code) c.onclick = () => onClick(code); else c.style.pointerEvents = "none";
+    if (code) {
+      c.onclick = () => onClick(code);
+      c.tabIndex = 0; c.setAttribute("role", "button");
+      c.setAttribute("aria-label", `Assign ${BUTTON_NAMES[code]}`);
+      c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(code); } };
+    } else c.style.pointerEvents = "none";
   });
 }
 
@@ -222,7 +235,8 @@ function renderHeader() {
     fill.style.width = `${Math.max(3, b.percent)}%`;
     fill.style.background = b.percent > 50 ? "var(--ok)" : b.percent > 20 ? "var(--warn)" : "var(--err)";
   }
-  $("#profile-label").textContent = `Profile ${S.profile}`;
+  $("#profile-label").textContent = `Onboard ${S.profile}`;
+  $("#profile-btn").disabled = S.busy.some(b => ["apply", "flash", "studio", "read"].includes(b));
 }
 
 function renderHome() {
@@ -245,6 +259,7 @@ function renderHome() {
     });
   }
   $("#rainbow-row").hidden = S.effect !== "rainbow";
+  $("#lighting-storage").textContent = S.effect ? "Animated effect · keep Dorsal running in the tray." : "Static color · runs without Dorsal.";
   if (S.effect === "rainbow") {
     setRange($("#rainbow-speed"), Math.round((30 - S.rainbow.speed) / 29.5 * 1000));
     $("#rainbow-text").textContent = `${S.rainbow.speed.toFixed(1)} s per cycle`;
@@ -328,20 +343,31 @@ function renderDock() {
   // the bar only shows up when something hasn't been sent to the mouse yet
   const applying = S.busy.includes("apply");
   $(".dock-row").hidden = !S.dirty && !applying;
-  $("#status").textContent = S.dirty && !applying ? "Not applied" : "";
+  const pending = S.pending_changes || [];
+  const result = S.apply_result;
+  $("#status").textContent = applying ? "Saving and verifying…" : result && result.tone !== "ok" ? result.title : `Changes to onboard profile ${S.profile}`;
+  $("#save-detail").textContent = applying ? "Keep the mouse connected until verification finishes." : result && result.tone !== "ok" ? result.text : pending.join(" · ") || "Loaded setup is ready to save.";
+  $("#save-detail").title = $("#save-detail").textContent;
+  $("#review-changes").disabled = applying;
+  if (result && result.id !== ui.applyResultSeen) {
+    ui.applyResultSeen = result.id;
+    toast(`${result.title}. ${result.text}`, result.tone);
+  }
+  if (S.status !== ui.lastStatus) {
+    ui.lastStatus = S.status;
+    if (!applying && /failed|didn't|not connected|not all/i.test(S.status || "") && (!result || S.status !== result.text)) toast(S.status, "warn");
+  }
   $("#version").textContent = `v${S.version}`;
   $("#dock-read").hidden = tab !== "profiles";
   $("#dock-read").disabled = !S.connected || S.busy.includes("read");
   const btn = $("#apply");
   btn.hidden = !S.dirty && !applying;
-  btn.textContent = applying ? "Applying…" : "Apply";
-  btn.disabled = applying || !S.connected;
+  btn.textContent = applying ? "Verifying…" : "Save to mouse";
+  btn.disabled = !S.connected || S.busy.some(b => ["apply", "flash", "studio", "read", "health", "input-start"].includes(b));
 }
 
 // buttons page
 
-// Same layout as the big mouse apps: pick a button on the mouse, pick a
-// category on the left, set it up in the middle.
 const ASSIGN_CATS = [
   { key: "default", name: "Default", icon: "i-reset" },
   { key: "keyboard", name: "Keyboard function", icon: "i-kbd" },
@@ -566,6 +592,10 @@ async function renderMacro() {
   });
   if (m.sel !== null) table.querySelector(`.tr[data-i="${m.sel}"]`)?.scrollIntoView({ block: "nearest" });
   $("#macro-stats").textContent = `${m.steps.length} / 256 steps · ${elapsed.toLocaleString()} ms`;
+  $("#macro-stats").title = "Sequence length and total programmed delay. Playback timing also depends on the mouse.";
+  $("#macro-save").textContent = macroDirty() ? "Save changes" : "Saved to library";
+  $("#macro-save").disabled = !macroDirty() || !m.steps.length;
+  $("#macro-upload").title = "Stores this sequence in a shared onboard slot. Assign it to a button in Buttons.";
   call("set_unsaved", macroDirty());
   const check = await call("macro_check", m.steps);
   const fb = $("#macro-feedback");
@@ -723,7 +753,7 @@ async function saveSetup() {
   if (id) { ui.loadedSetup = id; ui.setupSel = id; renderProfiles(); }
 }
 
-// Little tab strips inside a pane: show the view that matches, remember which.
+// sidebars and tab strips: show the matching view and remember it
 function wireViews(nav, views, key, onShow) {
   const show = (name) => {
     ui.views[key] = name;
@@ -735,7 +765,7 @@ function wireViews(nav, views, key, onShow) {
   show(ui.views[key] || $("button", nav).dataset.view);
 }
 
-// Six DPI stages as a small bar chart (log scale, like the DPI slider).
+// the six DPI stages as a tiny bar chart (log scale like the slider)
 function dpiBars(dpis, labels = false) {
   const lo = Math.log(100), hi = Math.log(Math.max(12800, ...dpis));
   return `<span class="dpi-bars ${labels ? "labeled" : ""}">` + dpis.map((v) => {
@@ -773,6 +803,10 @@ function renderDiagnostics() {
     ...Object.entries(d?.details || {}),
   ]));
   const hb = $("#health-run");
+  const findings = S.health || [];
+  const failed = findings.filter(c => c.status === "fail").length;
+  const warnings = findings.filter(c => c.status === "warn").length;
+  $("#diagnostic-title").textContent = S.busy.includes("health") ? "Inspecting your mouse…" : !d ? "Check your R5 Ultra" : d.stale ? "Run a fresh inspection" : failed ? "Inspection needs attention" : warnings ? "Inspection complete · review findings" : "Device checks passed";
   hb.disabled = S.busy.some(b => ["health", "flash", "apply", "studio", "link", "input-start"].includes(b));
   hb.textContent = S.busy.includes("health") ? "Reading device…" : d ? "Run again" : "Run diagnostics";
   $("#diagnostic-summary").textContent = S.busy.includes("health") ? "Reading settings and timing 30 commands. Lighting may pause briefly during the read burst."
@@ -780,6 +814,9 @@ function renderDiagnostics() {
     : "Read the device, check its configuration and time 30 command responses.";
   $("#diagnostic-stamp").textContent = d ? `${new Date(d.finished_at).toLocaleString()} · ${d.duration_s.toFixed(2)} s · ${d.connection || "offline"}`
     : "No diagnostic run yet. Nothing has been marked as passed.";
+  const previous = d?.previous, measured = d?.command;
+  $("#diagnostic-comparison").hidden = !previous || !measured;
+  if (previous && measured) $("#diagnostic-comparison").textContent = `Previous inspection (${new Date(previous.finished_at).toLocaleTimeString()}): ${previous.answered}/${previous.sent} replies${previous.median_ms != null ? ` · median ${previous.median_ms.toFixed(2)} ms` : ""}. Current: ${measured.answered}/${measured.sent}${measured.median_ms != null ? ` · median ${measured.median_ms.toFixed(2)} ms` : ""}. Same profile and connection type; command timing only.`;
   const labels = {match: "Matches", different: "Different", unavailable: "Unavailable", read: "Read"};
   setHtml($("#readback-rows"), d?.settings?.length ? d.settings.map(r => `<tr><th scope="row">${esc(r.name)}</th><td>${esc(r.observed)}</td><td>${esc(r.editor)}</td><td><span class="result ${r.status}">${labels[r.status]}</span></td></tr>`).join("")
     : '<tr><td colspan="4" class="empty">Run diagnostics to read the configuration from your mouse.</td></tr>');
@@ -864,6 +901,12 @@ async function pollDiagnostics() {
 }
 
 function renderInput(v) {
+  const remaining = Math.max(0, Math.ceil(v.duration - v.elapsed));
+  $("#capture-seconds").textContent = v.running ? remaining : v.events ? Math.round(v.elapsed) : "15";
+  $("#capture-title").textContent = v.invalid ? "Configuration changed · repeat capture" : v.starting ? "Reading the current configuration…" : v.running ? "Keep moving your mouse" : v.events ? (v.elapsed >= v.duration - .2 ? "Capture complete" : "Capture stopped · results kept") : "Put your mouse through its paces";
+  $("#capture-instruction").textContent = v.invalid ? v.hint : v.running ? "Move continuously in circles. Keep the same DPI stage selected until the timer finishes." : v.events ? (v.samples >= 10 ? "Review the measured event rate below. Click counts are observations, not a switch-fault diagnosis." : "Too little continuous movement for a comparison. Run again and keep moving throughout.") : "Keep one DPI stage selected. Move continuously in circles; click each button a few times.";
+  $("#capture-progress").style.width = `${Math.min(100, v.elapsed / v.duration * 100)}%`;
+  $(".capture-progress").setAttribute("aria-valuenow", String(Math.min(v.duration, v.elapsed)));
   $("#input-toggle").textContent = v.starting ? "Reading settings…" : v.running ? `Stop · ${Math.max(0, Math.ceil(v.duration - v.elapsed))} s left` : "Capture 15 seconds";
   $("#input-toggle").disabled = v.starting || (!v.running && (!S.connected || S.busy.some(b => ["health", "link", "flash", "apply", "studio"].includes(b))));
   $("#input-hint").textContent = v.error ? v.error : v.hint ? v.hint : v.running ? (v.events ? `Listening · ${v.events.toLocaleString()} reports received` : "Listening… move the R5 Ultra.")
@@ -1063,17 +1106,20 @@ function wire() {
   document.fonts.ready.then(moveTabIndicator);
   $$(".tab").forEach((t) => t.onclick = () => showTab(t.dataset.tab));
 
-  // profile menu
   const menu = $("#profile-menu");
   $("#profile-btn").onclick = (e) => {
     e.stopPropagation();
     menu.innerHTML = [1, 2, 3].map((n) => `<button class="${n === S.profile ? "on" : ""}" data-n="${n}">${n === S.profile ? '<svg class="ic sm"><use href="#i-check"/></svg>' : '<span style="width:1rem"></span>'}Profile ${n}</button>`).join("");
     menu.hidden = !menu.hidden;
-    $$("button", menu).forEach((b) => b.onclick = () => { menu.hidden = true; call("set_profile", +b.dataset.n); });
+    $$("button", menu).forEach((b) => b.onclick = async () => {
+      menu.hidden = true;
+      if (+b.dataset.n === S.profile) return;
+      if (S.dirty && !await confirmBox("Switch onboard profile?", "Pending edits will be replaced by the other profile's settings. Save them to the mouse first if you want to keep them.", "Switch profile")) return;
+      call("set_profile", +b.dataset.n);
+    });
   };
   document.addEventListener("click", () => { menu.hidden = true; });
 
-  // lighting
   $("#presets").innerHTML = PRESET_COLORS.map((c) => `<button data-c="${c}" style="--c:${c}" title="${c}"></button>`).join("");
   $$("#presets button").forEach((b) => b.onclick = () => call("set_color", b.dataset.c));
   const bright = $("#brightness");
@@ -1088,12 +1134,10 @@ function wire() {
     throttle("speed", 80, () => call("set_rainbow_speed", s));
   };
 
-  // customize
   $$(".quick-toggle").forEach((b) => b.onclick = () => call("set_setting", b.dataset.setting, !S[b.dataset.setting]));
   $("#deb-minus").onclick = () => call("set_setting", "debounce", Math.max(0, S.debounce - 1));
   $("#deb-plus").onclick = () => call("set_setting", "debounce", Math.min(20, S.debounce + 1));
 
-  // performance
   $("#competitive").onclick = () => call("competitive_mode", S.competitive == null ? null : !S.competitive);
   const dpi = $("#dpi");
   trackDrag(dpi);
@@ -1108,19 +1152,22 @@ function wire() {
 
   wireDpiField();
 
-  // dock
   $("#apply").onclick = () => call("apply");
+  $("#review-changes").onclick = () => dialog({title: `Pending · onboard profile ${S.profile}`, text: (S.pending_changes || []).join("\n") || "Loaded setup is ready to save.", html: '<p>Save to mouse writes the configuration, then reads back performance and sleep settings. Lighting receives a command acknowledgement.</p>'});
+  $$("[data-diagnostic-view]").forEach(b => b.onclick = () => $(`#diag-tabs [data-view="${b.dataset.diagnosticView}"]`).click());
   $("#dock-read").onclick = () => call("read_settings");
 
-  // buttons page
   $("#assign-save").onclick = saveAssignment;
   $("#assign-cancel").onclick = () => { ui.bindingFor = null; renderButtons(true); };
   $("#binding-read").onclick = () => call("read_bindings");
 
-  // macros page
   $("#step-kind").innerHTML = A.kinds.map((k) => `<option>${esc(k)}</option>`).join("");
   $("#step-kind").onchange = () => { $("#step-value").value = { Delay: "100", "Mouse down": "Left", "Mouse up": "Left", Wheel: "Up" }[$("#step-kind").value] || "A"; };
-  $("#macro-name").oninput = () => call("set_unsaved", macroDirty());
+  $("#macro-name").oninput = () => {
+    call("set_unsaved", macroDirty());
+    $("#macro-save").textContent = macroDirty() ? "Save changes" : "Saved to library";
+    $("#macro-save").disabled = !macroDirty() || !ui.macro.steps.length;
+  };
   $("#macro-library").onchange = async (e) => {
     const id = e.target.value;
     if (!(await discardOk())) { e.target.value = ui.macro.id || ""; return; }
@@ -1201,10 +1248,8 @@ function wire() {
     if (tab === "macros" && e.key === "Delete" && document.activeElement === document.body) $("#step-remove").click();
   });
 
-  // profiles page
   $("#profile-import").onclick = () => call("import_profile");
 
-  // tabs inside panes
   wireViews($("#diag-tabs"), ".diag-view", "diag", (name) => {
     $("#diag-title").textContent = $(`#diag-tabs button[data-view="${name}"]`).textContent;
     $("#link-chart").dataset.key = ""; render();
@@ -1214,7 +1259,6 @@ function wire() {
   slideHighlight($("#diag-tabs"), "button");
   slideHighlight($("#assign-cats"), ".cat");
 
-  // diagnostics page
   $("#probe-name").innerHTML = A.probes.map((p) => `<option>${esc(p)}</option>`).join("");
   $("#health-run").onclick = () => call("health");
   $("#report-copy").onclick = () => call("copy_report");
@@ -1228,7 +1272,6 @@ function wire() {
   $("#input-reset").onclick = async () => { await call("input_reset"); pollDiagnostics(); };
   setInterval(() => { if (tab === "diagnostics") pollDiagnostics(); }, 300);
 
-  // settings page
   $("#set-startup").onchange = (e) => call("set_startup", e.target.checked);
   $("#set-tray").onchange = (e) => call("set_close_to_tray", e.target.checked);
   $$("#theme-seg button").forEach((b) => b.onclick = async () => {
@@ -1339,14 +1382,12 @@ function setBackdrop(name) {
   img.src = name;
 }
 
-// The background drifts a few pixels a second, but CSS redraws it (blur and
-// all) at the monitor's full refresh rate: ~40% of a core at 60 Hz, worse at
-// 144/240 Hz. Driving the same animations by hand at 24 fps looks identical
-// and costs ~5%.
+// the background only moves a few pixels a second but css redraws it, blur and all,
+// at the monitor's refresh rate (~40% of a core at 60 Hz). the same animations at
+// 24 fps look identical
 const AMBIENT_FPS = 24;
 let ambientTimer = 0;
-// Scene time only runs while someone can see it (window up and not covered by
-// another window), so after a pause the drift picks up where it stopped.
+// scene time only runs while it's on screen, so it carries on where it stopped
 const ambientClock = { shown: 0, since: null, covered: false };
 function ambientVisible() { return !document.hidden && !ambientClock.covered; }
 function ambientNow() { return ambientClock.shown + (ambientClock.since === null ? 0 : performance.now() - ambientClock.since); }
@@ -1370,9 +1411,8 @@ function throttleAmbient() {
   }, 1000 / AMBIENT_FPS);
 }
 
-// A highlight that slides to the selected item in a sidebar, like the
-// underline under the top tabs. Lists that get re-rendered get the same
-// element back, placed where it was first so the move still animates.
+// highlight that slides to the selected sidebar item. re-rendered lists get the same
+// element back at its old spot so the move still animates
 function slideHighlight(container, itemSel) {
   const bar = document.createElement("i");
   bar.className = "side-slide";
