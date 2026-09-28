@@ -33,15 +33,6 @@ R5_PIDS = (0x0046, 0x0047)  # 0x0046 = wired USB, 0x0047 = wireless dongle
 VENDOR_USAGE_PAGE = 0xFFFF
 VENDOR_USAGE = 0x0000
 
-# Firmware light modes (values from the official UI's lightSelect dropdown)
-LIGHT_MODES = {
-    "Off": 0,
-    "Spectrum (rainbow cycle)": 1,
-    "Wave": 2,
-    "Static color": 4,
-    "Breathing": 5,
-    "Battery indicator": 6,
-}
 MODE_OFF, MODE_SPECTRUM, MODE_WAVE, MODE_STATIC, MODE_BREATHING, MODE_BATTERY = 0, 1, 2, 4, 5, 6
 
 # Polling-rate label -> byte, from the official app's Ge() table (its value
@@ -54,11 +45,6 @@ POLLING_RATES = {
 WIRED_POLLING_RATES = ["125 Hz", "250 Hz", "500 Hz", "1000 Hz"]   # USB cable maximum is 1000 Hz
 LIFT_OFF_DISTANCES = {"0.7 mm": 0.7, "1 mm": 1.0, "2 mm": 2.0}
 
-# Per the official app's model config for the R5 Ultra, these features are
-# disabled (HyperModeEnable, DPIIndicatorEnable, DPIXYEnable are all 0): the
-# mouse rejects them with status 0xA3. The builders below stay for documentation
-# and other models, but Dorsal doesn't send them to an R5 Ultra.
-R5_UNSUPPORTED = ("hyper mode", "DPI indicator", "separate X/Y DPI")
 
 SLEEP_NEVER = 65535  # set_sleep_time value that keeps the LED awake
 SLEEP_CHOICES = (1, 2, 5, 10, 30, 0)   # minutes before the mouse sleeps; 0 = never
@@ -150,14 +136,6 @@ def get_lightness(profile: int, wired: bool = False) -> bytes:
     return bytes(d)
 
 
-def dpi_indicator(profile: int, on: bool) -> bytes:
-    """If the indicator is off in the saved profile, the LED stays dark no
-    matter what colors or modes are sent."""
-    d = _packet(2, 2, 4, profile)
-    d[7] = 1 if on else 0
-    return bytes(d)
-
-
 def sleep_time(profile: int, seconds: int) -> bytes:
     """setSleepTime. Note: category byte stays 0 here, as in the official app."""
     d = _packet(3, 0, 7, profile)
@@ -204,15 +182,6 @@ def motion_sync(profile: int, on: bool) -> bytes:
 
 def ripple_control(profile: int, on: bool) -> bytes:
     return _simple_setting(profile, 10, 1 if on else 0)
-
-
-def hyper_mode(profile: int, on: bool) -> bytes:
-    return _simple_setting(profile, 11, 1 if on else 0)
-
-
-def dpi_xy_separate(profile: int, on: bool) -> bytes:
-    """Enable separate X/Y DPI per stage."""
-    return _simple_setting(profile, 13, 1 if on else 0)
 
 
 def tracking_mode(profile: int, mode: int) -> bytes:

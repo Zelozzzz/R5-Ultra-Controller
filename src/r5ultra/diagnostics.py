@@ -95,11 +95,6 @@ class IntervalMeter:
                 "max": values[-1], "count": len(values), "pauses": self.pauses}
 
 
-def nearest_rate(hz: float) -> int:
-    rates = (125, 250, 500, 1000, 2000, 4000, 8000)
-    return min(rates, key=lambda r: abs(math.log(max(hz, 1) / r)))
-
-
 def judge_polling(measured: float, configured: int) -> tuple[str, str]:
     """(verdict, explanation) comparing the measured rate to the setting."""
     if measured < 50:
@@ -331,17 +326,6 @@ def find_conflicts(process_names, dorsal_copies: int = 0) -> list[str]:
 
 # battery life
 
-# Not reported by the mouse: retailer listings give 230 mAh, and Li-ion cells
-# average about 3.7 V. Used only to turn the measured drain into an estimate.
-ASSUMED_CAPACITY_MAH = 230
-NOMINAL_VOLTS = 3.7
-
-
-def estimated_draw(percent_per_hour: float) -> tuple[float, float]:
-    """(milliamps, milliwatts) implied by a measured drain rate."""
-    ma = ASSUMED_CAPACITY_MAH * percent_per_hour / 100
-    return ma, ma * NOMINAL_VOLTS
-
 
 class BatteryHistory:
     """Keeps (time, percent) samples while on battery and estimates how long
@@ -443,72 +427,6 @@ def settings_evidence(settings, expected: dict) -> list[dict]:
                      "observed": display(actual) + (unit if actual is not None else ""),
                      "editor": display(wanted) + (unit if wanted is not None else "")})
     return rows
-
-
-def health_check(s: dict) -> list[Check]:
-    """Judge a snapshot of the app's state. Keys: connected, link_type,
-    asleep, answered (0..1 or None), latency_ms, conflicts (list of process
-    names), firmware, battery, charging, polling_hz, dirty."""
-    checks: list[Check] = []
-    if not s.get("connected"):
-        checks.append(Check(FAIL, "Mouse not found",
-                            "Plug in the dongle (or the cable). If it's plugged in, try another USB port."))
-    elif s.get("asleep"):
-        checks.append(Check(WARN, "Mouse is asleep", "The dongle is there but the mouse isn't answering. Move it."))
-    else:
-        checks.append(Check(OK, f"Connected over the {s.get('link_type', 'dongle')}"))
-
-    conflicts = s.get("conflicts") or []
-    if conflicts:
-        names = " and ".join([", ".join(conflicts[:-1]), conflicts[-1]] if len(conflicts) > 1 else conflicts)
-        names = names[:1].upper() + names[1:]
-        verb = "are" if len(conflicts) > 1 else "is"
-        checks.append(Check(FAIL, "Another mouse app is running",
-                            f"{names} {verb} also talking to the mouse and can undo Dorsal's settings. "
-                            "Close it, including from the system tray."))
-    else:
-        checks.append(Check(OK, "No conflicting mouse software running"))
-
-    answered = s.get("answered")
-    if s.get("connected") and answered is not None:
-        fix = ("Try another USB port or cable." if s.get("link_type") == "USB cable" else
-               "Move the dongle near the mouse (use the extension cable), away from USB 3 ports and Wi-Fi routers.")
-        if answered >= 0.97:
-            checks.append(Check(OK, "Connection is solid",
-                                f"{answered:.0%} of commands answered, {s.get('latency_ms', 0):.1f} ms round trip"))
-        elif answered >= 0.8:
-            checks.append(Check(WARN, "Connection drops some commands", f"Only {answered:.0%} answered. {fix}"))
-        else:
-            checks.append(Check(FAIL, "Connection is poor", f"Only {answered:.0%} answered. {fix}"))
-
-    fw = s.get("firmware")
-    if fw:
-        if fw == SUPPORTED_FIRMWARE:
-            checks.append(Check(OK, f"Firmware {fw} is supported"))
-        else:
-            checks.append(Check(WARN, f"Firmware {fw} hasn't been tested with Dorsal",
-                                f"Dorsal was built against {SUPPORTED_FIRMWARE}. Most settings should still work."))
-
-    battery = s.get("battery")
-    if battery is not None and not s.get("charging"):
-        if battery <= 10:
-            checks.append(Check(FAIL, f"Battery at {battery}%", "Charge the mouse soon."))
-        elif battery <= 25:
-            checks.append(Check(WARN, f"Battery at {battery}%", "Worth charging before a long session."))
-        else:
-            checks.append(Check(OK, f"Battery at {battery}%"))
-
-    hz = s.get("polling_hz")
-    if hz and s.get("link_type") == "USB cable" and hz > 1000:
-        checks.append(Check(WARN, f"{hz} Hz isn't possible over the cable",
-                            "The R5 Ultra polls at up to 1000 Hz wired; 2000-8000 Hz need the 2.4 GHz dongle."))
-    elif hz and hz >= 4000:
-        checks.append(Check(OK, f"Polling at {hz:,} Hz",
-                            "High rates use more CPU and battery. The live input test shows what actually arrives."))
-
-    if s.get("dirty"):
-        checks.append(Check(WARN, "Unsaved changes", "Some settings haven't been applied to the mouse yet."))
-    return checks
 
 
 # read-only probes

@@ -41,13 +41,6 @@ def resource_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def app_dir() -> Path:
-    """Folder holding Dorsal.exe (frozen) or the source tree's src/ folder."""
-    if is_frozen():
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent
-
-
 def set_app_id():
     if IS_WINDOWS:
         try:

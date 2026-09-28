@@ -2,7 +2,7 @@
 
 import sys
 
-if len(sys.argv) > 1 and sys.argv[1] not in ("--tray", "--classic"):
+if len(sys.argv) > 1 and sys.argv[1] not in ("--tray",):
     from .cli import main
 else:
     from .webui import main

@@ -16,7 +16,6 @@ def test_polling_meter_measures_steady_rates(hz):
     feed_steady(m, hz, 1.0)
     assert m.average == pytest.approx(hz, rel=0.03)
     assert m.stability > 0.95
-    assert dg.nearest_rate(m.average) == hz
 
 
 def test_polling_meter_ignores_pauses():
@@ -81,32 +80,6 @@ def test_battery_needs_enough_data():
     h.add(90, False, now=0)
     h.add(89, False, now=600)
     assert h.hours_left(89) is None
-
-
-def test_health_check_flags_the_common_problems():
-    checks = dg.health_check({"connected": True, "link_type": "USB cable", "answered": 0.6, "latency_ms": 9,
-                              "conflicts": ["ATTACK SHARK GAMING.exe"], "firmware": "0.0.13.0",
-                              "battery": 8, "charging": False, "polling_hz": 8000, "dirty": True})
-    by_title = {c.title: c.status for c in checks}
-    assert by_title["Another mouse app is running"] == dg.FAIL
-    assert by_title["Connection is poor"] == dg.FAIL
-    assert by_title["Firmware 0.0.13.0 hasn't been tested with Dorsal"] == dg.WARN
-    assert by_title["Battery at 8%"] == dg.FAIL
-    assert by_title["8000 Hz isn't possible over the cable"] == dg.WARN
-    assert by_title["Unsaved changes"] == dg.WARN
-
-
-def test_health_check_all_good():
-    checks = dg.health_check({"connected": True, "link_type": "2.4 GHz dongle", "answered": 1.0, "latency_ms": 3,
-                              "conflicts": [], "firmware": "0.0.12.0", "battery": 80, "charging": False,
-                              "polling_hz": 1000, "dirty": False})
-    assert all(c.status == dg.OK for c in checks)
-    assert dg.health_check({"connected": False})[0].status == dg.FAIL
-
-
-def test_estimated_draw():
-    ma, mw = dg.estimated_draw(2.0)                   # 2 %/h of 230 mAh
-    assert ma == pytest.approx(4.6) and mw == pytest.approx(17.02)
 
 
 class FakePinger:
@@ -203,11 +176,3 @@ def test_a_reply_to_another_command_is_not_called_ok():
 def test_a_second_dorsal_counts_as_a_conflict():
     assert dg.find_conflicts({"explorer.exe"}, dorsal_copies=1) == ["another copy of Dorsal"]
     assert dg.find_conflicts({"explorer.exe"}, dorsal_copies=0) == []
-
-
-def test_conflict_detail_reads_naturally():
-    one = dg.health_check({"connected": True, "conflicts": ["ATTACK SHARK GAMING.exe"]})
-    two = dg.health_check({"connected": True, "conflicts": ["ATTACK SHARK GAMING.exe", "another copy of Dorsal"]})
-    detail = lambda checks: next(c.detail for c in checks if c.title == "Another mouse app is running")
-    assert detail(one).startswith("ATTACK SHARK GAMING.exe is also talking")
-    assert detail(two).startswith("ATTACK SHARK GAMING.exe and another copy of Dorsal are also talking")

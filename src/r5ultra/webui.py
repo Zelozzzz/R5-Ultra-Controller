@@ -17,7 +17,6 @@ import hashlib
 import json
 import os
 import shutil
-import sys
 import threading
 import time
 from pathlib import Path
@@ -642,7 +641,7 @@ class WebUI:
         if not hwnd:
             return
         from . import theme
-        frame = theme.THEMES.get(self.ctrl.theme, theme.THEMES[theme.DEFAULT])["ui"]["frame"]
+        frame = theme.get(self.ctrl.theme)["frame"]
         r, g, b = (int(frame.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
         color = ctypes.c_int(r | (g << 8) | (b << 16))
         dwm = ctypes.windll.dwmapi
@@ -672,7 +671,7 @@ class WebUI:
             pystray.MenuItem("Quit", lambda: self.quit()),
         )
         from . import theme
-        accent = theme.THEMES.get(self.ctrl.theme, theme.THEMES[theme.DEFAULT])["ui"]["accent"]
+        accent = theme.get(self.ctrl.theme)["accent"]
         icon = pystray.Icon(APP_ID, app_icon(64, accent), APP_NAME, menu)
         threading.Thread(target=icon.run, daemon=True).start()
         return icon
@@ -760,12 +759,11 @@ def main(argv: list[str] | None = None):
     import argparse
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--tray", action="store_true", help="start hidden in the system tray")
-    parser.add_argument("--classic", action="store_true", help="use the previous (Tk) window")
     parser.add_argument("--after", type=int, metavar="PID", help=argparse.SUPPRESS)   # used by restart
     args, rest = parser.parse_known_args(argv)
-    if args.classic or not _can_use_web():
-        from .app import main as classic
-        return classic([a for a in (argv if argv is not None else sys.argv[1:]) if a != "--classic"])
+    if not webview2_available():
+        _ask_for_webview2()
+        return
     if args.after:
         winapp.wait_for_exit(args.after)
     instance = winapp.SingleInstance()
@@ -786,12 +784,13 @@ def _has_tray() -> bool:
         return False
 
 
-def _can_use_web() -> bool:
-    try:
-        __import__("webview")
-    except ImportError:
-        return False
-    return webview2_available()
+def _ask_for_webview2():
+    # Windows 11 always has it, some older Windows 10 installs don't
+    text = (f"{APP_NAME} needs Microsoft Edge WebView2, which isn't on this PC.\n\n"
+            "Open Microsoft's download page? Install the \"Evergreen Bootstrapper\", then start Dorsal again.")
+    if ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x4 | 0x30) == 6:     # yes/no, warning; 6 = yes
+        import webbrowser
+        webbrowser.open("https://developer.microsoft.com/microsoft-edge/webview2/")
 
 
 if __name__ == "__main__":

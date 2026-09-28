@@ -96,7 +96,7 @@ It's all stored on the mouse, so it works on any PC with or without Dorsal. Pack
 
 ## command line
 
-`dorsal-cli.exe` comes with the app (from source it's `dorsal.bat`).
+`dorsal-cli.exe` comes with the app (from source it's `python src/dorsal_cli.py`).
 
 ```text
 dorsal status                          connection, battery, link quality, firmware
@@ -128,18 +128,17 @@ src/
     library.py        saved macros and profiles
     effects.py        the lighting effects
     runner.py         plays an effect in the background
-    diagnostics.py    health check, battery estimate, polling/speed meters
+    diagnostics.py    battery estimate, polling/speed meters, link test
     rawinput.py       raw mouse input for the live test
     firmware.py       reading and patching firmware images
     flasher.py        flashing over the bootloader
     fw_install.py     the installer: find software, build, detect the cable
-    wizard.py         console firmware wizard (flash.bat)
+    wizard.py         console firmware wizard (src/flash_wizard.py)
     core.py           all the app logic, no window
     webui.py          the window (WebView2), tray, single instance
     web/              the UI itself (html/css/js)
     scenery.py        background + lit mouse images
     art.py            LED glow on the mouse photo, app icon
-    app.py etc.       old Tk window, only used if WebView2 is missing (or --classic)
 packaging/            build script, PyInstaller spec, installer
 tests/                tests, none need the mouse plugged in
 docs/                 protocol and firmware notes
@@ -152,8 +151,8 @@ docs/                 protocol and firmware notes
 Needs Python 3.10+ on Windows.
 
 ```bash
-install.bat      # installs dependencies (once)
-run.bat          # runs Dorsal
+pip install -r requirements.txt
+python src/launch.pyw
 ```
 
 App + portable zip:

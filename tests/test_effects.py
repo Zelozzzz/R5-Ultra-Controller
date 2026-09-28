@@ -44,9 +44,8 @@ def test_breathe_follows_the_live_color():
 
 
 def test_effect_registry_is_consistent():
-    groups = {g for g, _ in fx.GROUPS}
     for key, info in EFFECTS.items():
-        assert info.key == key and info.group in groups and info.preview
+        assert info.key == key and info.preview
 
 
 def test_only_the_good_effects_remain():

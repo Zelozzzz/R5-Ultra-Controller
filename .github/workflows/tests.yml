@@ -15,10 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      # The tests never touch USB, so hidapi/pystray aren't needed; customtkinter is for
-      # the fallback window's theme test.
+      # the tests never touch USB, so hidapi/pystray aren't needed
       - name: Install test dependencies
-        run: python -m pip install pytest intelhex pillow pyflakes customtkinter
+        run: python -m pip install pytest intelhex pillow pyflakes
       - name: Lint
         run: python -m pyflakes src tests
       - name: Run tests

@@ -6,6 +6,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from r5ultra.webui import main  # noqa: E402   (falls back to the Tk window without WebView2)
+from r5ultra.webui import main  # noqa: E402
 
 main(sys.argv[1:])

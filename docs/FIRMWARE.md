@@ -62,7 +62,7 @@ In Dorsal: **Settings → Install firmware…**
 
 Close the official ATTACK SHARK GAMING software first if it's running.
 
-Without Dorsal running, the same thing works from a console: run **`flash.bat`**,
+Without Dorsal running, the same thing works from a console: run **`python src/flash_wizard.py`**,
 choose **1**, drag the file in, and type `FLASH`. Command-line equivalent:
 
 ```
@@ -71,10 +71,9 @@ dorsal firmware flash firmware\r5_patched.hex
 ```
 
 **To undo it,** click **Restore original firmware** in the same window (or run
-`flash.bat` and choose **2**).
+`python src/flash_wizard.py` and choose **2**).
 
-These commands use `dorsal.bat` from the source checkout. For a packaged build,
-use `.\dorsal-cli.exe` instead of `dorsal`.
+From source, `dorsal` is `python src/dorsal_cli.py`. With the installed app it's `dorsal-cli.exe`.
 
 If an install is interrupted, the mouse waits in bootloader mode (it looks dead).
 Replug the cable and open **Install firmware…** again: it detects the bootloader

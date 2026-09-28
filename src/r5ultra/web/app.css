@@ -269,10 +269,6 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 .stepper button:hover { background: var(--hover); color: var(--text); }
 
 /* a setting with its explanation on the left and its control on the right */
-.orow { display: flex; align-items: center; gap: 1rem; padding: .85rem 0; }
-.orow + .orow { border-top: 1px solid var(--line); }
-.otext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
-.otext small { color: var(--muted); font-size: .84rem; line-height: 1.4; }
 
 /* the little "i" with an explanation on hover */
 .tip { display: inline-grid; place-items: center; width: .95rem; height: .95rem; margin-left: .3rem; vertical-align: .08rem;
@@ -329,8 +325,6 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 .sep { width: 1px; height: 1.4rem; margin: 0 .35rem; background: var(--line-2); }
 
 /* tabs inside a pane header: text with a line on the pane's edge */
-.tabs-head { padding-left: .5rem; }
-.pane-tabs { align-self: stretch; display: flex; }
 
 /* Every page but Home is one window split into sections, like desktop
    software: one sheet, a sidebar on the left with the same width and look
@@ -348,10 +342,6 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
   background: var(--sel); box-shadow: inset 0 0 0 1px var(--sel-line); }
 .slide-ready .side-slide { transition: transform .24s var(--ease), height .24s var(--ease), opacity .15s; }
 .crumb::before { content: "›"; margin: 0 .5rem; color: var(--muted); font-weight: 400; }
-.pane-tabs button { position: relative; border: 0; background: none; padding: 0 .75rem; color: var(--text-2); font-size: .92rem; transition: color .15s; }
-.pane-tabs button:hover { color: var(--text); }
-.pane-tabs button.on { color: var(--text); font-weight: 600; }
-.pane-tabs button.on::after { content: ""; position: absolute; left: .75rem; right: .75rem; bottom: -1px; height: 2px; background: var(--accent); }
 
 /* a group inside a pane */
 .block { padding: 1rem 1.1rem; border-radius: var(--r-s); background: rgba(255, 255, 255, .025); border: 1px solid var(--line); }
@@ -706,5 +696,5 @@ label.srow { cursor: pointer; }
 }
 @media (prefers-contrast: more) {
   .glass, .dock-row { background: var(--bg); border-color: var(--text-2); }
-  .muted, .note, .sub, .otext small, .stext small { color: var(--text-2); }
+  .muted, .note, .sub, .stext small { color: var(--text-2); }
 }

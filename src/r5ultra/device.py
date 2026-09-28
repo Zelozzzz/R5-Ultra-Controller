@@ -30,12 +30,12 @@ class DeviceNotFound(OSError):
             "Close the official Attack Shark software; it locks the device.")
 
 
+WIRED_PID = p.R5_PIDS[0]
+
+
 def _hid():
     import hid  # noqa: PLC0415 (lazy on purpose, see module docstring)
     return hid
-
-
-WIRED_PID, DONGLE_PID = p.R5_PIDS
 
 
 def _search_device() -> tuple[bytes, int] | None:
@@ -177,13 +177,6 @@ class MouseSettings:
         return sum(v is not None for v in values), len(values)
 
 
-def is_connected() -> bool:
-    try:
-        return find_device_path() is not None
-    except Exception:
-        return False
-
-
 class R5Mouse:
     """One logical connection to the mouse. Thread-safe: a lock serializes
     writes so the GUI and effects never interleave packets."""
@@ -308,9 +301,6 @@ class R5Mouse:
         with self._lock, self:
             return self.command(p.lightness(profile, brightness, self.wired))
 
-    def read_brightness(self, profile: int) -> int | None:
-        with self:
-            return p.reply_byte(self._answer(p.get_lightness(profile, self.wired)), 9)
 
     def set_active_stage(self, profile: int, stage: int) -> p.Ack | None:
         """Switch the mouse to DPI stage 1..6, like pressing its DPI button."""
@@ -477,12 +467,3 @@ class R5Mouse:
             finally:
                 self.READ_DELAY = old
 
-    def apply_lighting(self, profile: int, rgb: p.RGB, brightness: int,
-                       mode: int = p.MODE_STATIC, speed: int = 0,
-                       always_on: bool = True):
-        """Final LED state, in the order that proved reliable: indicator on,
-        brightness, sleep timeout, then the effect itself last."""
-        with self:
-            self.send(p.lightness(profile, brightness, self.wired))
-            self.send(p.sleep_time(profile, p.SLEEP_NEVER if always_on else 300))
-            self.send(p.light_effect(profile, mode, speed, rgb))

@@ -153,4 +153,3 @@ EFFECTS: dict[str, EffectInfo] = {e.key: e for e in [
                ("#0a3d2e", "#3cd6a0", "#7c4cff"), "ambient", aurora),
 ]}
 
-GROUPS = [("ambient", "AMBIENT"), ("vivid", "VIVID")]

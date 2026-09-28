@@ -25,11 +25,11 @@ def backdrop(w: int, h: int, theme_name: str | None = None, seed: int = 11) -> I
     dark gradient, soft light from above, broad color currents, a glow from
     below and particles. Rendered at half size (it's all soft) then scaled."""
     from . import theme
-    spec = theme.THEMES[theme_name] if theme_name in theme.THEMES else theme.current()
+    spec = theme.get(theme_name)
     t = spec["backdrop"]
     if t.get("aurora"):
         return _aurora(w, h)
-    accent = _rgb(spec["ui"]["accent"])
+    accent = _rgb(spec["accent"])
     bw, bh = max(8, w // 2), max(8, h // 2)
     rnd = random.Random(seed)
     grad = Image.linear_gradient("L").resize((bw, bh))

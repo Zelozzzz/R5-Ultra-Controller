@@ -23,11 +23,6 @@ class _PROCESSENTRY32W(ctypes.Structure):
                 ("pcPriClassBase", ctypes.c_long), ("dwFlags", _w.DWORD), ("szExeFile", _w.WCHAR * 260)]
 
 
-def process_count(exe_name: str) -> int:
-    """How many running processes have this executable name."""
-    return running_process_names(counts=True).get(exe_name.lower(), 0)
-
-
 def running_process_names(counts: bool = False):
     """Executable names of every running process, e.g. {'explorer.exe', ...}.
     Empty on error or off Windows."""

@@ -1555,9 +1555,6 @@ class Controller:
                     rate = self.battery_history.drain_per_hour()
                     battery["left"] = format_hours(left) if left else None
                     battery["rate"] = rate
-                    if rate is not None:
-                        ma, mw = dg.estimated_draw(rate)
-                        battery["draw"] = f"≈ {ma:.1f} mA  ·  {mw:.0f} mW"
             flash = self.apply_flash if self.apply_flash and self.apply_flash[2] > time.monotonic() else None
             return {
                 "rev": self.rev, "version": __version__, "connected": self.connected, "link_type": self.link_type,

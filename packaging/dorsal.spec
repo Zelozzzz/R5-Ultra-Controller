@@ -13,9 +13,8 @@ BUILD = ROOT / "build" / "packaging"
 
 common = dict(
     pathex=[str(ROOT / "src")],
-    # The window is HTML/CSS (src/r5ultra/web) drawn by WebView2 through pywebview;
-    # customtkinter stays for the fallback window on PCs without WebView2.
-    datas=collect_data_files("customtkinter") + collect_data_files("webview") + [
+    # the window is HTML/CSS (src/r5ultra/web) shown by WebView2 through pywebview
+    datas=collect_data_files("webview") + [
         (str(ROOT / "docs"), "docs"), (str(ROOT / "src" / "r5ultra" / "web"), "r5ultra/web"),
         (str(ROOT / "src" / "r5ultra" / "assets"), "r5ultra/assets")],
     # Chosen at runtime, so PyInstaller can't see them.

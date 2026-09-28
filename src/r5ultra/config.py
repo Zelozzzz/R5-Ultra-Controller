@@ -50,7 +50,6 @@ DEFAULTS: dict = {
     "theme": "ember",             # theme.py: ember (default), aura or ocean
 }
 
-LEGACY_FILE = Path(__file__).resolve().parent.parent / "r5_config.json"
 
 
 OLD_DIR_NAMES = ("R5UltraController",)     # before the app was renamed Dorsal
@@ -119,14 +118,8 @@ def with_defaults(saved: dict) -> dict:
     return cfg
 
 
-def load(path: Path | None = None, legacy: Path | None = LEGACY_FILE) -> dict:
-    path = path or config_path()
-    saved = _read_json(path)
-    if saved is None and legacy is not None and legacy.exists():
-        saved = _read_json(legacy)
-        if saved is not None:
-            save(with_defaults(saved), path)   # one-time migration
-    return with_defaults(saved or {})
+def load(path: Path | None = None) -> dict:
+    return with_defaults(_read_json(path or config_path()) or {})
 
 
 def save(cfg: dict, path: Path | None = None) -> None:

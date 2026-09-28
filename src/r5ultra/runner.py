@@ -35,9 +35,6 @@ class EffectRunner:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
 
-    @property
-    def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
 
     def start(self, key: str, frames: FramesFn):
         self.stop()

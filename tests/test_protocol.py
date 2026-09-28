@@ -48,7 +48,6 @@ def test_simple_packets():
     assert p.lightness(3, 200) == packet(0, 0, 2, 3, 2, 2, 3, 0, 200)
     assert p.lightness(3, 200, wired=True) == packet(0, 0, 2, 3, 2, 2, 3, 1, 200)
     assert p.get_lightness(3) == packet(0, 0, 2, 3, 2, 0x82, 3, 0)
-    assert p.dpi_indicator(1, True) == packet(0, 0, 2, 2, 2, 4, 1, 1)
     assert p.sleep_time(1, 65535) == packet(0, 0, 2, 3, 0, 7, 1, 0xFF, 0xFF)
     assert p.sleep_time(1, 300) == packet(0, 0, 2, 3, 0, 7, 1, 0x01, 0x2C)
     assert p.polling_rate(1, 6) == packet(0, 0, 2, 2, 1, 0, 1, 6)
