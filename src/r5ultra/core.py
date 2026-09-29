@@ -10,11 +10,11 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import APP_NAME, __version__, config, startup, sysinfo, updates, winapp
+from . import APP_NAME, __version__, config, models, startup, sysinfo, updates, winapp
 from . import diagnostics as dg
-from . import macros
+from . import device, macros
 from . import protocol as p
-from .device import DeviceNotFound, MouseSettings, R5Mouse, connection_type
+from .device import DeviceNotFound, Mouse, MouseSettings, connected_model, connected_pid, connection_type
 from .effects import EFFECTS, EffectContext, RainbowSettings, dim
 from .library import Library, atomic_json, profile_document, read_profile
 from .onboard import ACTIONS, BUTTONS, Onboard, dpi_lock_binding, key_binding, macro_binding
@@ -22,12 +22,15 @@ from .rawinput import RawMouseListener
 from .runner import EffectRunner
 
 CONNECTION_POLL_S = 2.0
+COLOR_MODES = ("single", "stages")    # one color, or one per DPI stage
 BATTERY_POLL_S = 10.0
 BATTERY_POLL_HIDDEN_S = 60.0
 LOW_BATTERY = 15
 LIVE_APPLY_DELAY_S = 0.12
+FLASH_APPLY_DELAY_S = 0.8     # mice where a color change is a flash write: wait until the picker stops
 DPI_WRITE_DELAY_S = 0.35
 STAGE_POLL_S = 1.5
+FW_POLL_S = 1.5                     # how often the installer window looks at the cable
 
 
 def format_hours(hours: float) -> str:
@@ -45,7 +48,7 @@ class Controller:
         self.lock = threading.RLock()
         self.rev = 0
         self.cfg = config.load()
-        self.mouse = R5Mouse()
+        self.mouse = Mouse()                     # Attack Shark's protocol, or another brand's module
         self.onboard = Onboard(self.mouse)
         self.library = Library()
 
@@ -59,7 +62,10 @@ class Controller:
                         "val": int(c["rainbow_val"]), "dir": c["rainbow_dir"]}
         self.stage_dpis = [int(v) for v in c["stage_dpis"]]
         self.stage_colors = list(c["stage_colors"])
-        self.active_stage = int(c["dpi_stage"])
+        self.stage_count = max(1, min(p.NUM_DPI_STAGES, int(c["stage_count"])))
+        self.color_mode = c["color_mode"] if c["color_mode"] in COLOR_MODES else "single"
+        self.active_stage = min(int(c["dpi_stage"]), self.stage_count)
+        self.sensor: int | None = None        # read from the mouse once per connection
         self.polling = c["polling"].replace(" Hz", "")
         self.lod = c["lod"]
         self.debounce = int(c["debounce"])
@@ -71,12 +77,17 @@ class Controller:
         self.ui_visible = True
         self.close_to_tray = bool(c["close_to_tray"])
         self.check_updates = bool(c.get("check_updates", True))
+        self.download_photos = bool(c.get("download_photos", True))
+        self._started = False
+        self._photo_jobs: set[str] = set()        # mice whose picture is being downloaded right now
         self.update = {"state": "idle"}
         from .theme import DEFAULT
         self.theme = c.get("theme") or DEFAULT
 
         self.connected = False
         self.link_type: str | None = None
+        self.model = models.by_key(c.get("model")) or models.DEFAULT
+        self._use_model(self.model)
         self.battery: p.Battery | None = None
         self.firmware: str | None = None
         self.battery_history = dg.BatteryHistory(config.config_dir() / "battery.json")
@@ -96,6 +107,7 @@ class Controller:
         self.health: list[dg.Check] = []
         self.diagnostic: dict | None = None
         self._connection_epoch = 0
+        self._hub_asked_at = 0.0          # when the Mouse Hub mouse was last asked who it is
         self.link_result: dg.LinkTestResult | None = None
         self.link_progress: float | None = None
         self._link_stop: threading.Event | None = None
@@ -117,8 +129,8 @@ class Controller:
         self._reset_input_meters()
         self.probe_result: str | None = None
 
-        self.fw = {"open": False, "source": None, "image": None, "cable": "none", "steps": [],
-                   "progress": None, "done": False}
+        self.fw = {"open": False, "source": None, "image": None, "known": None, "cable": "none", "steps": [],
+                   "progress": None, "done": False, "model": self.model, "gen": 0}
 
         ctx = EffectContext(color=lambda: self.rgb, rainbow=lambda: self._rainbow_settings())
         self.runner = EffectRunner(self.mouse, ctx, profile=lambda: self.profile,
@@ -190,6 +202,8 @@ class Controller:
         return True
 
     def start(self):
+        self._started = True
+        self._want_photo(self.model)
         threading.Thread(target=self._loop, daemon=True, name="controller").start()
         if self.check_updates:
             timer = threading.Timer(4, self.check_for_update)
@@ -221,6 +235,44 @@ class Controller:
                 self.rev += 1
         self.background(work, done, what="Update check", quiet=True)
 
+    def set_download_photos(self, enabled: bool):
+        self.download_photos = bool(enabled)
+        self.save()
+        self.changed()
+        if enabled:
+            self._want_photo(self.model)
+
+    # the mouse's real picture, from its brand's web hub, when there's none on this PC yet
+
+    def _needs_photo(self, model: models.Model) -> bool:
+        from . import device_image
+        if not (self._started and self.download_photos and model.photo) or device_image.has_picture(model):
+            return False
+        device_image.photo_for(model)           # the official app or the built-in one count too
+        return device_image.sources.get(model.key) == "drawing"
+
+    def _want_photo(self, model: models.Model):
+        """Download this mouse's picture in the background if all we have is the drawing."""
+        with self.lock:
+            if model.key in self._photo_jobs:
+                return
+            self._photo_jobs.add(model.key)
+
+        def work():
+            try:
+                if self._needs_photo(model):
+                    from . import art, device_image
+                    device_image.download(model)
+                    art.forget_photo()
+                    self.log(f"Got the {model.name} picture from {model.brand}'s web hub")
+            except Exception as exc:                  # offline, blocked, or the hub changed: keep the drawing
+                self.log(f"Couldn't get the {model.name} picture: {exc}")
+            finally:
+                with self.lock:
+                    self._photo_jobs.discard(model.key)
+                    self.rev += 1
+        threading.Thread(target=work, daemon=True, name=f"photo-{model.key}").start()
+
     def set_check_updates(self, enabled: bool):
         self.check_updates = bool(enabled)
         self.save()
@@ -232,7 +284,7 @@ class Controller:
                 pass
 
     def _loop(self):
-        next_conn, next_stage, launched = 0.0, 0.0, False
+        next_conn, next_stage, next_fw, launched = 0.0, 0.0, 0.0, False
         while not self._stop.is_set():
             now = time.monotonic()
             if now >= next_conn:
@@ -251,9 +303,14 @@ class Controller:
             if now >= self._next_battery and self.connected:
                 self._next_battery = now + (BATTERY_POLL_S if self.ui_visible else BATTERY_POLL_HIDDEN_S)
                 self.refresh_device_info()
-            if self.fw["open"] and "flash" not in self.busy:
-                state = _cable_state()
-                if state != self.fw["cable"]:
+            if self.fw["open"] and "flash" not in self.busy and now >= next_fw:
+                next_fw = now + FW_POLL_S
+                state, plugged = self._fw_pick(self.fw["model"])
+                if plugged is not None and plugged is not self.fw["model"]:
+                    # a different mouse got plugged in, build its firmware instead
+                    self._fw_reset(plugged, state)
+                    self.firmware_prepare()
+                elif state != self.fw["cable"]:
                     with self.lock:
                         self.fw["cable"] = state
                         self.rev += 1
@@ -283,14 +340,151 @@ class Controller:
                 self.competitive = None
                 self.rev += 1
             self.connected, self.link_type = connected, link_type
-            if link_type == "USB cable" and self.polling not in self.polling_values():
-                self.polling = "1000"
+            self._fit_polling()
+        if not connected or newly:
+            device.hub_identity.clear()            # it may be another mouse now, ask again
+            self._hub_asked_at = 0.0
+        self._adopt_connected_model()
+        if connected and self.model.protocol == "compx":
+            self._settle_hub_model()
         if newly:
             self.mouse.link.clear()
             self.firmware = None
+            self.sensor = None
             self._next_battery = 0.0
             threading.Timer(0.4, self._sync_profile).start()
             threading.Thread(target=self._check_official_app, daemon=True).start()
+
+    def _adopt_connected_model(self):
+        """Switch to the mouse that's really plugged in if it isn't the one Dorsal is set to."""
+        model = connected_model(prefer=self.model) if self.connected else None
+        if model is None or model is self.model:
+            return
+        chosen = self.cfg.get("model_chosen")
+        old = self.model
+        with self.lock:
+            self.model = model
+            self._use_model(model)
+            self._forget_the_last_mouse()
+            self.rev += 1
+        self._stop_effect_if_not_live()
+        self.log(f"Connected mouse: {model.name}")
+        untried = not model.tried and model.key not in self.cfg.get("confirmed_models", ())
+        if chosen:
+            self.notice(f"Found an {model.name}",
+                        f"You picked the {old.name} in setup, but the mouse plugged in is an {model.name}. "
+                        f"Dorsal switched to the {model.name}. You can change it in Settings → Mouse."
+                        + (" Nobody has tried Dorsal on it, so it isn't written to until you pick it there." if untried else ""),
+                        kind="info")
+        self.save()
+
+    def _forget_the_last_mouse(self):
+        """The firmware version and sensor it reported belong to the mouse before. Caller holds the lock. (The
+        installer's "already newer" guard compares against the version, so a stale one blocks or lets through
+        the wrong thing.)"""
+        self.firmware = None
+        self.sensor = None
+        self._next_battery = 0.0
+
+    def _stop_effect_if_not_live(self):
+        """An effect that was running on the last mouse would keep writing colors to this one, and for these
+        every color is a write to the mouse's memory. (Outside the lock: stopping waits for the effect's thread.)"""
+        if not self.model.live_lighting:
+            self.runner.stop()
+
+    def _settle_hub_model(self):
+        """The Mouse Hub mice (F1 Air, X11 Ultra) share every USB id, so the id can't say which one is plugged
+        in. The mouse can: ask it once per connection (again every 10 s while it doesn't answer, say asleep)
+        and switch if it isn't the one Dorsal is set to."""
+        now = time.monotonic()
+        if "compx" in device.hub_identity or now - self._hub_asked_at < 10.0:
+            return
+        self._hub_asked_at = now
+        try:
+            self.mouse.identity()
+        except (OSError, ValueError, DeviceNotFound):
+            return
+        self._adopt_connected_model()
+
+    def choose_model(self, key: str):
+        model = models.by_key(key)
+        if model is None:
+            raise ValueError("Dorsal doesn't know that mouse.")
+        with self.lock:
+            changed = model is not self.model
+            self.model = model
+            self._use_model(model)
+            if changed:
+                self._forget_the_last_mouse()
+            self.cfg["model_chosen"] = True
+            confirmed = self.cfg.setdefault("confirmed_models", [])
+            if model.key not in confirmed:
+                confirmed.append(model.key)          # "yes, that's my mouse", said about this one
+            self.rev += 1
+        self._stop_effect_if_not_live()
+        self.log(f"Mouse picked in setup: {model.name}")
+        self.save()
+
+    def mouse_choices(self) -> list[dict]:
+        """Every mouse Dorsal knows, for the setup wizard. Nothing is downloaded for it: a mouse only has a picture
+        in here if there's a real one on this PC already (the built-in one, the official app's, one fetched before).
+        The one that gets picked has its picture fetched then, see _use_model."""
+        from . import device_image
+        detected = connected_model(prefer=self.model) if self.connected else None
+        out = []
+        for m in models.MODELS:
+            # a picture if there's a real one here already, no 40 identical drawings
+            pictured = device_image.has_picture(m) or (m.app_folder and device_image.find_official_app()) \
+                or m is models.DEFAULT or m is self.model
+            photo = device_image.photo_for(m) if pictured else None
+            if photo is not None and device_image.sources.get(m.key) == "drawing" and m is not self.model:
+                photo = None
+            out.append({"key": m.key, "name": m.name, "brand": m.brand, "tried": m.tried, "firmware": m.has_firmware,
+                        "led_built_in": m.led_built_in, "cable_only": m.dongle_pid is None and not m.more_receivers,
+                        "detected": m is detected, "selected": m is self.model,
+                        "photo": _thumbnail(photo, 200 if m.app_folder else 140),
+                        "source": device_image.sources.get(m.key) if pictured else None})
+        return out
+
+    def _use_model(self, model: models.Model):
+        self.mouse.use(model)                    # right protocol, and a shared receiver goes to this one
+        if self._started:
+            self._want_photo(model)
+        # keep the settings inside what this mouse has (from its official app's config)
+        self.stage_count = max(1, min(model.stages, self.stage_count))
+        self.active_stage = max(1, min(self.stage_count, self.active_stage))
+        top, step = model.debounce
+        self.debounce = max(model.debounce_min, min(top, self.debounce // step * step))
+        self.stage_dpis = [model.fit_dpi(v, p.DPI_MIN) for v in self.stage_dpis]
+        self._fit_sleep()
+        if model.protocol != "jxc":
+            self.profile = 1                     # one set of settings, no onboard profiles
+        if self.lod not in self.lod_values():
+            self.lod = self._nearest_lod(self.lod)
+        if not model.live_lighting:
+            self.effect = None                   # an animation would be a flash write every frame
+        self._fit_polling()
+        try:
+            from . import device_image
+            device_image.current = model
+        except ImportError:        # no Pillow, no picture
+            pass
+
+    def sleep_choices(self) -> list[int]:
+        """The sleep times (minutes, 0 = never) this mouse can hold. Empty: it can't be set at all."""
+        have = self.model.sleep_minutes
+        return [m for m in p.SLEEP_CHOICES if have is None or m in have]
+
+    def _fit_sleep(self):
+        choices = self.sleep_choices()
+        if choices and self.sleep_min not in choices:
+            self.sleep_min = 5 if 5 in choices else choices[0]
+
+    def _fit_polling(self):
+        """A rate this connection has: 1000 if it can, else the closest one."""
+        values = self.polling_values()
+        if self.polling not in values:
+            self.polling = "1000" if "1000" in values else min(values, key=lambda v: abs(int(v) - int(self.polling)))
 
     def _check_official_app(self):
         if self._warned_official:
@@ -303,9 +497,32 @@ class Controller:
                         "talk to your mouse properly.\n\nClose it (check the tray by the clock too), "
                         "then Dorsal works normally.", kind="info")
 
+    def lod_values(self) -> list[str]:
+        if self.model.protocol != "jxc":          # the sensor check is Attack Shark's, other mice list their own
+            return list(self.model.lift_off)
+        return [v for v in p.lift_off_choices(self.sensor) if v in self.model.lift_off] or ["1 mm"]
+
+    def _nearest_lod(self, name: str) -> str:
+        """This mouse's lift-off height closest to `name` (1 mm if it can't tell)."""
+        want = p.lod_mm(name) or 1.0
+        return min(self.lod_values(), key=lambda v: abs((p.lod_mm(v) or 1.0) - want))
+
+    @property
+    def competitive_supported(self) -> bool:
+        # the official app hides it on a 3395. the R6 only has it since firmware 0.0.3.1
+        if self.sensor == 1:
+            return False
+        since = self.model.competitive_since
+        return self.model.competitive or bool(since and self.firmware and dg.version_at_least(self.firmware, since))
+
     def polling_values(self) -> list[str]:
-        rates = p.WIRED_POLLING_RATES if self.link_type == "USB cable" else list(p.POLLING_RATES)
-        return [r.replace(" Hz", "") for r in rates]
+        if self.link_type == "USB cable":
+            rates = self.model.polling_cable
+        elif self.link_type:
+            rates = self.model.polling_for(connected_pid())
+        else:
+            rates = self.model.polling_receiver
+        return [str(r) for r in rates if f"{r} Hz" in p.POLLING_RATES]
 
     def refresh_device_info(self, force: bool = False):
         if not self.connected or "flash" in self.busy:
@@ -314,13 +531,19 @@ class Controller:
         def work():
             battery = self.mouse.read_battery()
             firmware = self.firmware if self.firmware and not force else self.mouse.read_firmware_version()
-            return battery, firmware
+            sensor = self.sensor if self.sensor is not None else self.mouse.read_sensor_model()
+            return battery, firmware, sensor
 
         def done(result):
-            battery, fw = result
+            battery, fw, sensor = result
             with self.lock:
                 self.battery = battery
                 self.firmware = fw or self.firmware
+                if sensor is not None and sensor != self.sensor:
+                    self.sensor = sensor
+                    if self.lod not in self.lod_values():     # a 3395 has no 0.7 mm
+                        self.lod = self._nearest_lod(self.lod)
+                    self.rev += 1
             b = battery
             if b is not None and not b.asleep and b.percent is not None:
                 self.battery_history.add(b.percent, b.charging)
@@ -335,7 +558,7 @@ class Controller:
             self._low_warned = False
         elif b.percent <= LOW_BATTERY and not self._low_warned:
             self._low_warned = True
-            msg = f"R5 Ultra battery is at {b.percent}%. Time to charge."
+            msg = f"{self.model.name} battery is at {b.percent}%. Time to charge."
             self.log(msg)
             self.set_status(msg)
             if self.on_low_battery:
@@ -353,16 +576,20 @@ class Controller:
         if self.effect:
             rgb = self.frame_rgb if self.runner.running_key == self.effect else self.rgb
         else:
-            rgb = self.rgb
+            rgb = p.hex_to_rgb(self.picked_color())
         return tuple(rgb), 0.3 + 0.7 * self.brightness / 255
 
     def _lighting_blocked(self) -> bool:
-        return self.profile_pending or bool(self.busy & {"studio", "flash", "apply"})
+        # a mouse nobody has tried gets nothing written on its own the moment it's detected: wait until its
+        # owner has said "yes, that's my mouse" about THIS one (choose_model), having picked some other mouse
+        # in the setup once doesn't count
+        unconfirmed = not self.model.tried and self.model.key not in self.cfg.get("confirmed_models", ())
+        return unconfirmed or self.profile_pending or bool(self.busy & {"studio", "flash", "apply"})
 
     def resolve_lighting(self):
         if self._lighting_blocked():
             return
-        if self.effect:
+        if self.effect and self.model.live_lighting:
             if self.runner.running_key != self.effect:
                 self.runner.start(self.effect, EFFECTS[self.effect].frames)
         else:
@@ -373,17 +600,30 @@ class Controller:
     def _send_static(self):
         if not self.connected or self._lighting_blocked():
             return
-        profile, rgb = self.profile, dim(self.rgb, self.brightness)
+        profile, colors = self.profile, self._led_colors()
 
         def work():
             with self.mouse:
-                self.mouse.set_color(profile, rgb, 255)
+                self.mouse.set_stage_colors(profile, colors, 255)
         self.background(work, what="Lighting")
+
+    def _led_colors(self) -> list[p.RGB]:
+        """What goes into the 6 stage slots, dimmed."""
+        if self.color_mode == "stages":
+            return [dim(p.hex_to_rgb(c), self.brightness) for c in self.stage_colors]
+        return [dim(self.rgb, self.brightness)] * p.NUM_DPI_STAGES
+
+    def picked_color(self) -> str:
+        """The color the picker edits: the one color, or the color of the stage the mouse is on."""
+        if self.color_mode == "stages":
+            return self.stage_colors[max(0, min(p.NUM_DPI_STAGES, self.active_stage) - 1)].upper()
+        return self.color
 
     def _schedule_live_apply(self):
         if self._live_timer is not None:
             self._live_timer.cancel()
-        self._live_timer = threading.Timer(LIVE_APPLY_DELAY_S, self._do_live_apply)
+        delay = LIVE_APPLY_DELAY_S if self.model.live_lighting else FLASH_APPLY_DELAY_S
+        self._live_timer = threading.Timer(delay, self._do_live_apply)
         self._live_timer.daemon = True
         self._live_timer.start()
 
@@ -399,8 +639,11 @@ class Controller:
     def set_color(self, hex_color: str):
         rgb = p.hex_to_rgb(hex_color)
         with self.lock:
-            self.color = p.rgb_to_hex(rgb).upper()
-            self.rgb = rgb
+            if self.color_mode == "stages":
+                self.stage_colors[max(1, self.active_stage) - 1] = p.rgb_to_hex(rgb).upper()
+            else:
+                self.color = p.rgb_to_hex(rgb).upper()
+                self.rgb = rgb
             self.profile_pending = False
             if self.effect:
                 self.effect = None
@@ -408,6 +651,17 @@ class Controller:
             self.rev += 1
         self.save()
         self._schedule_live_apply()
+
+    def set_color_mode(self, mode: str):
+        if mode not in COLOR_MODES:
+            raise ValueError(f"Unknown lighting mode {mode!r}")
+        with self.lock:
+            self.color_mode = mode
+            self.profile_pending = False
+            self.effect = None
+            self.rev += 1
+        self.save()
+        self.resolve_lighting()
 
     def set_brightness(self, value: int):
         with self.lock:
@@ -419,6 +673,8 @@ class Controller:
         with self.lock:
             self.profile_pending = False
             self.effect = None if key is None or key not in EFFECTS or self.effect == key else key
+            if not self.model.live_lighting:
+                self.effect = None
             self.rev += 1
         self.save()
         self.resolve_lighting()
@@ -430,7 +686,7 @@ class Controller:
 
     def set_stage_dpi(self, index: int, value: int):
         with self.lock:
-            self.stage_dpis[int(index)] = max(p.DPI_MIN, min(p.DPI_MAX, int(value)))
+            self.stage_dpis[int(index)] = self.model.fit_dpi(value, p.DPI_MIN)
             self.rev += 1
         self._schedule_dpi_write()
 
@@ -445,25 +701,34 @@ class Controller:
         self._dpi_timer = None
         if not self.connected or self.profile_pending or self.busy & {"flash", "apply", "studio"}:
             return
-        profile, dpis = self.profile, list(self.stage_dpis)
+        profile, dpis, count = self.profile, list(self.stage_dpis), self.stage_count
 
         def work():
             with self.mouse:
-                return self.mouse.command(p.stage_dpis(profile, [(v, v) for v in dpis]))
+                return self.mouse.command(p.stage_dpis(profile, [(v, v) for v in dpis[:count]]))
 
         def done(ack):
             if ack is not None and ack.ok:
                 with self.lock:
                     applied = list(self._applied)
-                    applied[0] = tuple(dpis)
+                    applied[0], applied[-1] = tuple(dpis), count
                     self._applied = tuple(applied)
-                self.set_status(f"DPI saved to the mouse · {' / '.join(map(str, dpis))}")
+                self.set_status(f"DPI saved to the mouse · {' / '.join(map(str, dpis[:count]))}")
             else:
                 self.set_status("The mouse didn't take the DPI change. Move it to wake it and try again.")
         self.background(work, done, what="DPI")
 
+    def set_stage_count(self, count: int):
+        count = max(1, min(self.model.stages, int(count)))
+        with self.lock:
+            self.stage_count = count
+            self.active_stage = min(self.active_stage, count)
+            self.rev += 1
+        self.save()
+        self._schedule_dpi_write()
+
     def set_active_stage(self, stage: int):
-        stage = max(1, min(p.NUM_DPI_STAGES, int(stage)))
+        stage = max(1, min(self.stage_count, int(stage)))
         with self.lock:
             self.active_stage = stage
             self.rev += 1
@@ -496,15 +761,16 @@ class Controller:
                     raise ValueError(f"{value} Hz isn't available on this connection")
                 self.polling = str(value)
             elif name == "lod":
-                if value not in p.LIFT_OFF_DISTANCES:
+                if value not in self.lod_values():
                     raise ValueError(f"{value!r} isn't a lift-off distance the mouse has")
                 self.lod = value
             elif name == "debounce":
-                self.debounce = max(0, min(20, int(value)))
+                top, step = self.model.debounce
+                self.debounce = max(self.model.debounce_min, min(top, int(value) // step * step))
             elif name in ("motion_sync", "ripple", "angle_snap", "always_on"):
                 setattr(self, name, bool(value))
             elif name == "sleep_min":
-                if int(value) not in p.SLEEP_CHOICES:
+                if int(value) not in self.sleep_choices():
                     raise ValueError(f"{value!r} isn't a sleep time the mouse has")
                 self.sleep_min = int(value)
             else:
@@ -513,7 +779,8 @@ class Controller:
 
     def _device_snapshot(self):
         return (tuple(self.stage_dpis), tuple(self.stage_colors), self.polling, self.lod, self.debounce,
-                self.motion_sync, self.ripple, self.angle_snap, self.sleep_min, self.profile, self.color, self.brightness)
+                self.motion_sync, self.ripple, self.angle_snap, self.sleep_min, self.profile, self.color, self.brightness,
+                self.color_mode, self.stage_count)
 
     @property
     def always_on(self) -> bool:
@@ -533,6 +800,10 @@ class Controller:
     def set_profile(self, n: int):
         if self.busy & {"flash", "apply", "studio", "read"}:
             raise ValueError("Wait for the current mouse operation to finish")
+        if self.model.protocol != "jxc":
+            if int(n) != 1:
+                self.set_status(f"The {self.model.name} has one set of settings, no onboard profiles")
+            return
         with self.lock:
             self.profile = max(1, min(3, int(n)))
             self.profile_pending = False
@@ -583,6 +854,8 @@ class Controller:
         with self.lock:
             if not self.connected:
                 raise ValueError("Connect the mouse to read Competitive Mode")
+            if not self.competitive_supported:
+                raise ValueError(f"The {self.model.name} doesn't have Competitive Mode")
             if self.busy.intersection({"flash", "apply", "studio", "competitive"}):
                 raise ValueError("Wait for the current mouse operation to finish")
             profile, link_type = self.profile, self.link_type
@@ -628,15 +901,15 @@ class Controller:
             if "competitive" not in self.busy:
                 self.competitive = s.competitive
             if s.stage_dpis:
-                self.stage_dpis = [int(x) for x, _y in s.stage_dpis][:p.NUM_DPI_STAGES]
+                read = [max(p.DPI_MIN, min(self.model.dpi_max, int(x))) for x, _y in s.stage_dpis][:p.NUM_DPI_STAGES]
+                self.stage_count = len(read)
+                self.stage_dpis = read + self.stage_dpis[len(read):]     # stages it doesn't use keep their values
             if s.polling:
                 self.polling = s.polling.replace(" Hz", "")
-            if s.lod is not None:
-                match = next((k for k, v in p.LIFT_OFF_DISTANCES.items() if abs(v - s.lod) < 0.05), None)
-                if match:
-                    self.lod = match
-            if s.debounce is not None and 0 <= s.debounce <= 20:
-                self.debounce = s.debounce
+            if s.lod is not None and p.lod_name(s.lod) in self.model.lift_off:
+                self.lod = p.lod_name(s.lod)
+            if s.debounce is not None and 0 <= s.debounce <= self.model.debounce[0]:
+                self.debounce = max(self.model.debounce_min, s.debounce)
             if s.motion_sync is not None:
                 self.motion_sync = bool(s.motion_sync)
             if s.ripple is not None:
@@ -646,7 +919,7 @@ class Controller:
             # brightness isn't copied back: the patched firmware reads 0 until the DPI button gets pressed
             if s.sleep_seconds is not None:
                 self.sleep_min = 0 if s.sleep_seconds == p.SLEEP_NEVER else max(1, round(s.sleep_seconds / 60))
-            if s.active_stage and 1 <= s.active_stage <= p.NUM_DPI_STAGES:
+            if s.active_stage and 1 <= s.active_stage <= self.stage_count:
                 self.active_stage = s.active_stage
             self._applied = self._device_snapshot()
             self.rev += 1
@@ -659,9 +932,11 @@ class Controller:
             return
         with self.lock:
             s = {"profile": self.profile, "rgb": dim(self.rgb, self.brightness), "brightness": 255,
-                 "sleep_s": self.sleep_seconds(), "angle_snap": self.angle_snap, "dpis": list(self.stage_dpis),
+                 "colors": self._led_colors(),
+                 "sleep_s": self.sleep_seconds() if self.sleep_choices() else None, "angle_snap": self.angle_snap,
+                 "dpis": list(self.stage_dpis[:self.stage_count]),
                  "polling": p.POLLING_RATES.get(f"{self.polling} Hz", p.POLLING_RATES["1000 Hz"]),
-                 "lod": p.LIFT_OFF_DISTANCES.get(self.lod, 1.0), "debounce": self.debounce,
+                 "lod": p.lod_mm(self.lod) or 1.0, "debounce": self.debounce,
                  "motion_sync": self.motion_sync, "ripple": self.ripple}
             snapshot = self._device_snapshot()
             epoch = self._connection_epoch
@@ -672,7 +947,7 @@ class Controller:
                         what="Apply", busy="apply")
 
     def _apply(self, s: dict):
-        prof, report = s["profile"], []
+        prof, report, off = s["profile"], [], self.model.no_settings
 
         def step(name, packet):
             try:
@@ -684,24 +959,30 @@ class Controller:
             step("profile", p.active_profile(prof))
             step("DPI stages", p.stage_dpis(prof, [(v, v) for v in s["dpis"]]))
             step("polling", p.polling_rate(prof, s["polling"]))
-            step("lift-off", p.lift_off_distance(prof, s["lod"]))
+            if "lod" not in off:                             # (some mice don't have these two at all)
+                step("lift-off", p.lift_off_distance(prof, s["lod"]))
             step("debounce", p.debounce_time(prof, s["debounce"]))
-            step("motion sync", p.motion_sync(prof, s["motion_sync"]))
+            if "motion_sync" not in off:
+                step("motion sync", p.motion_sync(prof, s["motion_sync"]))
             step("ripple", p.ripple_control(prof, s["ripple"]))
             step("angle snap", p.angle_snap(prof, s["angle_snap"]))
-            step("LED color", p.dpi_stage_colors(prof, [s["rgb"]] * p.NUM_DPI_STAGES))   # what the LED shows
+            step("LED color", p.dpi_stage_colors(prof, s["colors"]))   # what the LED shows
             step("brightness", p.lightness(prof, s["brightness"], self.mouse.wired))
-            step("sleep", p.sleep_time(prof, s["sleep_s"]))
+            if s["sleep_s"] is not None:                       # some mice can't have it set
+                step("sleep", p.sleep_time(prof, s["sleep_s"]))
             step("light effect", p.light_effect(prof, p.MODE_STATIC, 0, s["rgb"]))
             expected = {"polling": p.decode_polling(s["polling"]), "stage_dpis": [(v, v) for v in s["dpis"]],
                         "lod": s["lod"], "debounce": s["debounce"], "motion_sync": s["motion_sync"],
                         "ripple": s["ripple"], "angle_snap": s["angle_snap"]}
+            for name in off:
+                expected.pop(name, None)
             try:
                 readback = self.mouse.read_settings(prof)
                 rows = [r for r in dg.settings_evidence(readback, expected) if r["key"] in expected]
-                rows.append({"key": "sleep", "name": "Sleep timer", "actual": readback.sleep_seconds,
-                             "expected": s["sleep_s"], "status": "unavailable" if readback.sleep_seconds is None
-                             else "match" if readback.sleep_seconds == s["sleep_s"] else "different"})
+                if s["sleep_s"] is not None:
+                    rows.append({"key": "sleep", "name": "Sleep timer", "actual": readback.sleep_seconds,
+                                 "expected": s["sleep_s"], "status": "unavailable" if readback.sleep_seconds is None
+                                 else "match" if readback.sleep_seconds == s["sleep_s"] else "different"})
             except (OSError, ValueError) as exc:
                 rows = [{"key": "readback", "name": "Settings readback", "status": "unavailable", "detail": str(exc)}]
         return report, rows
@@ -719,12 +1000,14 @@ class Controller:
             if total and accepted == total and not problems and not stale:
                 self.profile_pending = False
                 self._applied = snapshot
-                flash, status = ("Settings verified", "ok"), "Performance and sleep settings read back and verified. Lighting commands acknowledged."
+                what = "Performance and sleep settings" if self.sleep_choices() else "Performance settings"
+                flash, status = ("Settings verified", "ok"), f"{what} read back and verified. Lighting commands acknowledged."
             elif stale:
                 flash, status = ("Save needs review", "warn"), "The connection or profile changed during save. Reload the mouse settings before continuing."
             elif problems:
                 flash = ("Save not verified", "warn")
-                status = "Readback needs attention: " + ", ".join(problems) + ". Wake the mouse and retry."
+                status = ("Readback needs attention: " + ", ".join(problems) + ". "
+                          + ("Try again." if self.link_type == "USB cable" else "Wake the mouse and retry."))
             elif any(ack and ack.status == p.NO_MOUSE for _n, ack, _e in report):
                 flash = ("Mouse didn't answer", "warn")
                 status = f"Only {accepted}/{total} confirmed: the mouse may be asleep. Move it and apply again."
@@ -739,14 +1022,24 @@ class Controller:
         self.resolve_lighting()
 
     def reset_profile(self):
+        if self.model.protocol != "jxc":
+            self.set_status(f"The {self.model.name} has one set of settings, there's no profile to reset")
+            return
         profile = self.profile
-        self.background(lambda: self.mouse.send(p.reset_profile(profile)),
-                        lambda _r: (self.log(f"Profile {profile} reset."),
-                                    self.set_status(f"Profile {profile} reset to factory settings")),
-                        what="Reset")
+
+        def done(ack):
+            if ack is not None and ack.ok:
+                self.log(f"Profile {profile} reset.")
+                self.set_status(f"Profile {profile} reset to factory settings")
+            else:
+                self.set_status(f"The mouse didn't reset profile {profile}. Move it to wake it and try again.")
+        self.background(lambda: self.mouse.command(p.reset_profile(profile)), done, what="Reset")
 
     def _studio(self, work, done, title):
         if "studio" in self.busy:
+            return False
+        if self.model.protocol != "jxc":          # onboard buttons/macros are Attack Shark's format only, for now
+            self.set_status(f"Buttons and macros for the {self.model.name} aren't in Dorsal yet")
             return False
         self.set_status(f"{title}…")
         self.runner.stop()
@@ -895,6 +1188,11 @@ class Controller:
                      lambda _: self.set_status(f"Slot {slot} uploaded and verified. Assign it on the Buttons page."),
                      "Uploading macro")
 
+    def clear_macro_slot(self, slot: int):
+        slot = int(slot)
+        self._studio(lambda: self.onboard.clear_macro(slot),
+                     lambda _: self.set_status(f"Slot {slot} cleared on the mouse"), "Clearing macro slot")
+
     def read_macro_slot(self, slot: int):
         slot = int(slot)
 
@@ -918,7 +1216,11 @@ class Controller:
             doc = row["document"]
             s = doc["settings"]
             out.append({"id": row["id"], "name": doc["name"], "dpis": s["stage_dpis"], "polling": s["polling"],
-                        "lod": s["lod"], "color": s["last_color"]})
+                        "lod": s["lod"], "color": s["last_color"],
+                        # older setups may not have the stage count or color mode
+                        "count": s.get("stage_count", p.NUM_DPI_STAGES), "color_mode": s.get("color_mode", "single"),
+                        "stage_colors": s.get("stage_colors", []), "brightness": s.get("brightness"),
+                        "debounce": s.get("debounce"), "motion_sync": s.get("motion_sync")})
         return out
 
     def save_profile(self, name: str, item_id=None) -> str:
@@ -940,25 +1242,30 @@ class Controller:
         with self.lock:
             self.profile_pending = True
             self.effect = None
-            self.stage_dpis = [int(v) for v in settings["stage_dpis"]]
+            self.stage_dpis = [self.model.fit_dpi(int(v), p.DPI_MIN) for v in settings["stage_dpis"]]
+            self.stage_count = max(1, min(self.model.stages, int(settings.get("stage_count", p.NUM_DPI_STAGES))))
+            self.color_mode = settings.get("color_mode", "single")
+            self.active_stage = min(self.active_stage, self.stage_count)
+            if settings["lod"] not in self.lod_values():        # a 3395 has no 0.7 mm, the F1 Air no 1 mm
+                settings = {**settings, "lod": self._nearest_lod(settings["lod"])}
             self.stage_colors = list(settings["stage_colors"])
-            rate = settings["polling"]
-            if self.link_type == "USB cable" and rate not in ("125 Hz", "250 Hz", "500 Hz", "1000 Hz"):
-                rate = "1000 Hz"
-            self.polling = rate.replace(" Hz", "")
+            self.polling = settings["polling"].replace(" Hz", "")
+            self._fit_polling()
             self.lod = settings["lod"]
-            self.debounce = int(settings["debounce"])
+            top, step = self.model.debounce
+            self.debounce = max(self.model.debounce_min, min(top, int(settings["debounce"]) // step * step))
             self.motion_sync = bool(settings["motion_sync"])
             self.ripple = bool(settings["ripple"])
             self.always_on = bool(settings.get("always_on", True))
             if settings.get("sleep_min") is not None:
                 self.sleep_min = int(settings["sleep_min"])
+                self._fit_sleep()
             self.angle_snap = bool(settings.get("angle_snap", False))
             self.color = settings["last_color"].upper()
             self.rgb = p.hex_to_rgb(self.color)
             self.brightness = int(settings["brightness"])
             self.rev += 1
-        self.set_status("Profile loaded locally. Apply changes to save it to the mouse.")
+        self.set_status("Setup loaded. Apply to save it to the mouse.")
 
     def load_profile(self, item_id):
         row = next(r for r in self.library.entries("profile") if r["id"] == item_id)
@@ -966,12 +1273,12 @@ class Controller:
 
     def import_profile(self, path: str):
         self.library.save(read_profile(Path(path)))
-        self.set_status("Profile imported. Select it and Load to preview its settings.")
+        self.set_status("Setup imported. Pick it and press Load.")
 
     def export_profile(self, item_id, path: str):
         row = next(r for r in self.library.entries("profile") if r["id"] == item_id)
         atomic_json(Path(path), row["document"])
-        self.set_status("Profile exported")
+        self.set_status("Setup exported")
 
     def delete_profile(self, item_id):
         self.library.delete(item_id)
@@ -982,8 +1289,8 @@ class Controller:
             self.set_status("Finish the current operation before running diagnostics")
             return
         profile, link_type, epoch = self.profile, self.link_type, self._connection_epoch
-        expected = {"polling": f"{self.polling} Hz", "stage_dpis": [(v, v) for v in self.stage_dpis],
-                    "active_stage": self.active_stage, "lod": p.LIFT_OFF_DISTANCES.get(self.lod),
+        expected = {"polling": f"{self.polling} Hz", "stage_dpis": [(v, v) for v in self.stage_dpis[:self.stage_count]],
+                    "active_stage": self.active_stage, "lod": p.lod_mm(self.lod),
                     "debounce": self.debounce, "motion_sync": self.motion_sync, "ripple": self.ripple,
                     "angle_snap": self.angle_snap, "competitive": self.competitive}
         self.set_status("Diagnostics: reading device state and timing 30 read commands…")
@@ -1005,7 +1312,7 @@ class Controller:
                 checks.append(dg.Check("ok", "Process scan completed", "No other Dorsal or known Attack Shark process was found."))
             result, details, battery, settings = None, {}, None, MouseSettings()
             if not link_type:
-                checks.insert(0, dg.Check("fail", "R5 Ultra interface not found", "Connect the receiver or USB cable, then run again."))
+                checks.insert(0, dg.Check("fail", f"{self.model.name} interface not found", "Connect the receiver or USB cable, then run again."))
             else:
                 try:
                     with self.mouse._lock, self.mouse:     # nothing else gets in the middle of the timed burst
@@ -1021,10 +1328,19 @@ class Controller:
                     session["errors"].append(str(exc))
                     checks.insert(0, dg.Check("fail", "Device read failed", str(exc)))
                 firmware = details.get("Mouse firmware")
-                checks.append(dg.Check("ok" if firmware == dg.SUPPORTED_FIRMWARE else "warn", "Firmware readback",
-                    f"Reported {firmware or 'unavailable'}. The stock and LED-patched images can report the same version; this does not verify the installed image."))
-                checks.append(dg.Check("ok" if battery and not battery.asleep else "warn", "Battery readback",
-                    f"{battery.percent}% · {'charging' if battery.charging else 'on battery'}" if battery and not battery.asleep else "No usable charge reading; wake the mouse and repeat."))
+                if not self.model.has_firmware_readback:
+                    checks.append(dg.Check("ok", "Firmware readback", f"The {self.model.name} doesn't report a firmware version."))
+                elif not self.model.has_firmware:     # no Dorsal firmware for this one, so nothing to compare against
+                    checks.append(dg.Check("ok" if firmware and firmware != "unknown" else "warn", "Firmware readback",
+                        f"Reported {firmware or 'unavailable'}. There's no Dorsal firmware for the {self.model.name}, so there's nothing else to check."))
+                else:
+                    checks.append(dg.Check("ok" if firmware in dg.SUPPORTED_FIRMWARE.get(self.model.key, ()) else "warn", "Firmware readback",
+                        f"Reported {firmware or 'unavailable'}. The stock and LED-patched images can report the same version; this does not verify the installed image."))
+                if not self.model.has_battery:
+                    checks.append(dg.Check("ok", "Battery readback", f"The {self.model.name} doesn't report a charge level."))
+                else:
+                    checks.append(dg.Check("ok" if battery and not battery.asleep else "warn", "Battery readback",
+                        f"{battery.percent}% · {'charging' if battery.charging else 'on battery'}" if battery and not battery.asleep else "No usable charge reading; wake the mouse and repeat."))
                 session["settings"] = dg.settings_evidence(settings, expected)
                 read = sum(r["actual"] is not None for r in session["settings"])
                 fields = len(session["settings"])
@@ -1273,7 +1589,7 @@ class Controller:
             if "polling" in view:
                 view["polling"].update(verdict="unverified", text="Configuration changed; comparison is unavailable.")
         if self._raw is not None and s["events"] == 0 and self._raw.other_mice > 50:
-            view["hint"] = "That's a different mouse: this test only listens to the R5 Ultra."
+            view["hint"] = f"That's a different mouse: this test only listens to the {self.model.name}."
         return view
 
     def report(self) -> str:
@@ -1292,7 +1608,8 @@ class Controller:
             lines.append(f"Battery drain: {rate:.1f}%/h")
         if q is not None:
             lines.append(f"Link quality: {q.label}, {q.answered:.0%} answered, {q.latency_ms:.1f} ms")
-        lines.append(f"Settings: {self.polling} Hz, LOD {self.lod}, debounce {self.debounce} ms, profile {self.profile}")
+        lod = "" if "lod" in self.model.no_settings else f", LOD {self.lod}"          # not for a mouse without lift-off
+        lines.append(f"Settings: {self.polling} Hz{lod}, debounce {self.debounce} ms, profile {self.profile}")
         if self.diagnostic:
             d = self.diagnostic_view()
             lines += ["", f"Diagnostic run: {d['finished_at']} · {d['duration_s']:.2f} s · profile {d['profile']}",
@@ -1361,12 +1678,32 @@ class Controller:
         self.set_status(f"Diagnostic session saved to {dest.name}")
 
     def firmware_open(self):
-        with self.lock:
-            self.fw.update(open=True, done=False, progress=None, cable=_cable_state(),
-                           steps=[("work", "Looking for your copy of the official ATTACK SHARK GAMING software…"),
-                                  ("wait", "Waiting for step 1."), ("wait", ""), ("wait", "Ready when steps 1 to 3 are done.")])
-            self.rev += 1
+        state, plugged = self._fw_pick(self.model)
+        self._fw_reset(plugged or self.model, state, open=True)
         self.firmware_prepare()
+
+    def _fw_pick(self, current):
+        """(cable state, mouse) for the installer window to be about: `current` for as long as it's plugged in, unless
+        another mouse waits in install mode (an interrupted flash), otherwise whichever one the cable check finds
+        first. With an R5 and an M5 both on cables the window used to jump to whichever is first in the table."""
+        state, best = _cable_check()
+        if current is None or not current.has_firmware or best is current:
+            return state, best
+        own_state, own = _cable_check(current)
+        if own is not None and not (state == "bootloader" and own_state != "bootloader"):
+            return own_state, own
+        return state, best
+
+    def _fw_reset(self, model, cable, **more):
+        """The installer window starts over for this mouse: nothing of the last one (its image, its file, a
+        "Done!") is left in it."""
+        looking = (f"Looking for the {model.name} firmware file you picked before…" if model.firmware_from_hub
+                   else "Looking for your copy of the official ATTACK SHARK GAMING software…")
+        with self.lock:
+            self.fw.update(done=False, progress=None, cable=cable, model=model, source=None, image=None, known=None,
+                           steps=[("work", looking), ("wait", "Waiting for step 1."), ("wait", ""),
+                                  ("wait", "Ready when steps 1 to 3 are done.")], **more)
+            self.rev += 1
 
     def firmware_close(self) -> bool:
         if "flash" in self.busy:
@@ -1384,39 +1721,56 @@ class Controller:
     def firmware_prepare(self, chosen: str | None = None):
         from . import firmware as fwmod
         from . import fw_install
-        remembered = self.cfg.get("firmware_source")
+        with self.lock:
+            self.fw["gen"] += 1
+            gen, model = self.fw["gen"], self.fw["model"]
+        remembered_key = "firmware_hex" if model.firmware_from_hub else "firmware_source"
+        remembered = self.cfg.get(remembered_key)
         if chosen:
             self._fw_step(0, "work", "Checking…")
 
         def work():
-            sources = [Path(chosen)] if chosen else fw_install.find_sources(remembered)
+            sources = [Path(chosen)] if chosen else fw_install.find_sources(remembered, model)
             usable = [s for s in sources if not fw_install.needs_7zip(s)]
             source = (usable or sources or [None])[0]
             try:
-                return source, fw_install.prepare_patched(source), None
+                return source, fw_install.prepare_patched(source, model), None
             except (fwmod.FirmwareError, OSError, ValueError) as exc:
                 return source, None, str(exc)
 
         def done(result):
             source, image, error = result
-            with self.lock:
-                self.fw["source"], self.fw["image"] = source, image
+            known = fwmod.identify(image) if image is not None else None      # worked out once, not on every state push
             if source is not None:
-                self.cfg["firmware_source"] = str(source)
-                self._fw_step(0, "ok", f"Using {source.name}")
+                first = ("ok", f"Using {source.name}")
             elif image is not None:
-                self._fw_step(0, "ok", "Using the Dorsal firmware you built earlier.")
+                first = ("ok", "Using the Dorsal firmware you built earlier.")
             else:
-                self._fw_step(0, "bad", "Not found. Choose the official installer (.exe) or its app.asar.")
+                first = ("bad", f"Choose the {model.name} firmware file (.hex) from {model.brand}'s web hub."
+                         + (f" It's at {fwmod.hub_url(model)}" if fwmod.hub_url(model) else "")
+                         if model.firmware_from_hub
+                         else "Not found. Choose the official installer (.exe) or its app.asar.")
+            second = None
             if image is not None:
-                self._fw_step(1, "ok", "Built from your stock v0.00.12.00 and fingerprint-checked (SHA-256 match).")
+                second = ("ok", f"Built from your stock {model.name} firmware and fingerprint-checked (SHA-256 match).")
             elif source is not None:
                 if fw_install.needs_7zip(source):
                     error = "Reading the installer needs 7-Zip (free, 7-zip.org). Install it, or choose app.asar."
-                self._fw_step(1, "bad", error or "Couldn't build the firmware.")
+                second = ("bad", error or "Couldn't build the firmware.")
+            with self.lock:
+                if gen != self.fw["gen"]:
+                    return                    # another mouse or another pick since, this answer is for the old one
+                self.fw.update(source=source, image=image, known=known)
+                self.fw["steps"][0] = first
+                if second is not None:
+                    self.fw["steps"][1] = second
+                if source is not None and image is not None:
+                    self.cfg[remembered_key] = str(source)      # only a file that built is worth remembering
+                self.rev += 1
         self.background(work, done, what="Firmware build")
 
     def firmware_view(self) -> dict:
+        from . import flasher
         f = self.fw
         cable_text = {
             "cable": ("ok", "Mouse connected by cable."),
@@ -1428,23 +1782,67 @@ class Controller:
         if "flash" not in self.busy and not f["done"] and steps[3][0] != "bad":
             steps[2] = cable_text
         plugged = f["cable"] in ("cable", "bootloader")
-        return {"open": f["open"], "steps": [{"state": s, "text": t} for s, t in steps],
+        newer = self._fw_running_newer(f["known"])
+        if newer and "flash" not in self.busy and not f["done"]:
+            steps[3] = ("bad", newer)
+        return {"open": f["open"], "model": f["model"].name, "key": f["model"].key, "brand": f["model"].brand,
+                "from_hub": f["model"].firmware_from_hub, "tried": f["model"].tried,
+                "readback": flasher.wants_readback(f["model"]),
+                "steps": [{"state": s, "text": t} for s, t in steps],
                 "progress": f["progress"], "done": f["done"], "busy": "flash" in self.busy,
-                "can_install": f["image"] is not None and plugged and "flash" not in self.busy and not f["done"],
+                "can_install": (f["image"] is not None and plugged and "flash" not in self.busy and not f["done"]
+                                and not newer),
                 "can_restore": f["source"] is not None and plugged and "flash" not in self.busy,
                 "needs_file": f["image"] is None and bool(steps[0][0] in ("bad", "ok"))}
 
-    def firmware_install(self, restore: bool = False):
+    def _fw_running_newer(self, known, restoring: bool = False) -> str | None:
+        """Something to say if the mouse already runs newer firmware than the image (known) this would put on it.
+        The installer builds from the official app's copy, which can be older than what the web hub has (R6
+        v0.00.03.01, M5 Ultra v0.00.09.00), and installing it would quietly take the mouse back a version."""
+        from . import firmware as fwmod
+        model = self.fw["model"]
+        if known is None or model is not self.model:
+            return None
+        want, have = fwmod.version_of(known), fwmod.parse_version(self.firmware)
+        if not (want and have and have > want):
+            return None
+        mine, theirs = ".".join(map(str, have)), ".".join(map(str, want))
+        if restoring:
+            return (f"Your mouse already runs v{mine}, newer than the original v{theirs} Dorsal has for the "
+                    f"{model.name}, so restoring it would take the mouse back a version. Leave the firmware alone.")
+        # only worth sending people to the web hub if Dorsal knows a stock file as new as their mouse
+        fits = any((v := fwmod.version_of(k)) and v >= have for k in fwmod.KNOWN_IMAGES
+                   if k.model == model.key and not k.patched)
+        if fits:
+            return (f"Your mouse already runs v{mine}, newer than the v{theirs} this would install. Use “Use a "
+                    "different file…” and pick the matching newer .hex from the web hub, or leave the firmware alone.")
+        return (f"Your mouse already runs v{mine}, newer than the v{theirs} Dorsal has for the {model.name}, so "
+                "it won't install over it. Leave the firmware alone.")
+
+    def firmware_install(self, restore: bool = False, expect: str | None = None):
         from . import firmware as fwmod
         from . import flasher
         from . import fw_install
+        model = self.fw["model"]
+        if expect is not None and expect != model.key:
+            self._fw_step(3, "bad", "A different mouse was plugged in while the question was open. Look at the "
+                                    "window again and press the button for that one.")
+            return
         if restore:
-            image = fw_install.prepare_stock(self.fw["source"])
+            image = fw_install.prepare_stock(self.fw["source"], model)
+            newer = self._fw_running_newer(fwmod.identify(image), restoring=True)
             success = "Original firmware restored. Unplug the cable and switch the mouse off and on."
         else:
             image = self.fw["image"]
+            if image is None:
+                self._fw_step(3, "bad", "There's no firmware built yet. Choose the file in step 1 first.")
+                return
+            newer = self._fw_running_newer(self.fw["known"])
             success = ("Done! Unplug the cable, switch the mouse off and on, then press its "
                        "DPI button once to turn the light on.")
+        if newer:
+            self._fw_step(3, "bad", newer)
+            return
         phases = {"erase": "Erasing…", "program": "Writing…", "verify": "Verifying…", "reboot": "Restarting the mouse…"}
         weights = {"erase": (0.0, 0.05), "program": (0.05, 0.85), "verify": (0.85, 0.99), "reboot": (0.99, 1.0)}
         self.runner.stop()
@@ -1463,21 +1861,42 @@ class Controller:
 
         def work():
             try:
-                flasher.flash(image, log=lambda _m: None, progress=progress)
-                return None
-            except (flasher.FlashError, fwmod.FirmwareError, OSError) as exc:
-                return str(exc)
+                return ("done", flasher.flash(image, log=self.log, progress=progress, model=model))
+            except flasher.FlashWritten as exc:              # it was written, the mouse just didn't come back yet
+                return ("written", str(exc))
+            except (flasher.FlashNotStarted, fwmod.FirmwareError) as exc:
+                return ("untouched", str(exc))
+            except flasher.FlashError as exc:                # started, and the mouse is in its bootloader
+                self.log(f"Firmware install stopped: {exc}")
+                return ("failed", str(exc))
+            except Exception as exc:                         # not left on "Starting…" whatever went wrong
+                self.log(f"Firmware install failed: {exc}")
+                return ("unexpected", str(exc))
 
-        def done(error):
+        def done(result):
+            kind, detail = result
             with self.lock:
                 self.firmware = None
-            if error:
-                self._fw_step(3, "bad", f"{error} Replug the cable and press Install again; "
-                                        "the mouse is safe in install mode.")
-            else:
+            if kind == "done":
                 with self.lock:
                     self.fw["done"], self.fw["progress"] = True, 1.0
-                self._fw_step(3, "ok", success)
+                if detail and not flasher.wants_readback(model):
+                    note = ""                        # flashed the way this mouse always has been
+                elif detail:
+                    note = " Every block was read back from the mouse and matched."
+                else:
+                    note = " The mouse acknowledged every block, but Dorsal couldn't read them back to compare."
+                self._fw_step(3, "ok", success + note)
+            elif kind == "written":
+                self._fw_step(3, "bad", detail)
+            elif kind == "untouched":
+                self._fw_step(3, "bad", f"{detail} Nothing was written to the mouse.")
+            elif kind == "unexpected":
+                self._fw_step(3, "bad", f"Something went wrong: {detail}. If the mouse has stopped responding it's "
+                                        "probably waiting in install mode: replug the cable and press Install again.")
+            else:
+                self._fw_step(3, "bad", f"{detail} Replug the cable and press Install again; "
+                                        "the mouse is safe in install mode.")
             self.save()
         self.background(work, done, what="Firmware install", busy="flash")
 
@@ -1506,12 +1925,13 @@ class Controller:
                 "last_color": self.color, "brightness": self.brightness, "profile": self.profile,
                 "always_on": self.always_on, "sleep_min": self.sleep_min, "angle_snap": self.angle_snap,
                 "close_to_tray": self.close_to_tray, "check_updates": self.check_updates,
-                "stage_dpis": list(self.stage_dpis), "stage_colors": list(self.stage_colors),
+                "download_photos": self.download_photos, "stage_dpis": list(self.stage_dpis), "stage_colors": list(self.stage_colors),
                 "polling": f"{self.polling} Hz", "lod": self.lod, "debounce": self.debounce,
                 "motion_sync": self.motion_sync, "ripple": self.ripple,
                 "rainbow_speed": self.rainbow["speed"], "rainbow_sat": self.rainbow["sat"],
                 "rainbow_val": self.rainbow["val"], "rainbow_dir": self.rainbow["dir"],
                 "last_effect": self.effect, "theme": self.theme, "dpi_stage": self.active_stage,
+                "model": self.model.key, "stage_count": self.stage_count, "color_mode": self.color_mode,
             })
             cfg = dict(self.cfg)
         try:
@@ -1537,23 +1957,35 @@ class Controller:
                 "link": None if q is None else {"label": q.label, "answered": q.answered,
                                                 "latency": q.latency_ms, "bars": q.bars},
                 "battery": battery, "firmware": self.firmware, "profile": self.profile,
-                "color": self.color, "brightness": self.brightness, "effect": self.effect,
-                "effects": [{"key": k, "name": e.name, "subtitle": e.subtitle} for k, e in EFFECTS.items()],
+                "model": {"key": self.model.key, "name": self.model.name, "dpi_button": self.model.dpi_button,
+                          "firmware_available": self.model.has_firmware, "firmware_from_hub": self.model.firmware_from_hub,
+                          "photo": _photo_source(self.model),
+                          "brand": self.model.brand, "tried": self.model.tried, "photo_version": _photo_version(),
+                          "onboard": self.model.protocol == "jxc"},
+                "model_chosen": bool(self.cfg.get("model_chosen")),
+                "color": self.picked_color(), "color_mode": self.color_mode, "stage_colors": list(self.stage_colors),
+                "brightness": self.brightness,
+                "effect": self.effect,
+                "effects": [{"key": k, "name": e.name, "subtitle": e.subtitle} for k, e in EFFECTS.items()]
+                if self.model.live_lighting else [],
                 "rainbow": dict(self.rainbow),
-                "stage_dpis": list(self.stage_dpis), "active_stage": self.active_stage,
-                "dpi_min": p.DPI_MIN, "dpi_max": p.DPI_MAX,
+                "stage_dpis": list(self.stage_dpis), "active_stage": self.active_stage, "stage_count": self.stage_count,
+                "dpi_min": p.DPI_MIN, "dpi_max": self.model.dpi_max, "stages_max": self.model.stages,
+                "debounce_max": self.model.debounce[0], "debounce_step": self.model.debounce[1],
+                "debounce_min": self.model.debounce_min, "unsupported": list(self.model.no_settings),
                 "polling": self.polling, "polling_values": self.polling_values(),
-                "lod": self.lod, "lod_values": list(p.LIFT_OFF_DISTANCES),
+                "lod": self.lod, "lod_values": self.lod_values(), "sensor": p.SENSORS.get(self.sensor),
                 "debounce": self.debounce, "motion_sync": self.motion_sync, "ripple": self.ripple,
-                "competitive": self.competitive,
-                "always_on": self.always_on, "sleep_min": self.sleep_min, "sleep_choices": list(p.SLEEP_CHOICES),
+                "competitive": self.competitive, "competitive_supported": self.competitive_supported,
+                "always_on": self.always_on, "sleep_min": self.sleep_min, "sleep_choices": self.sleep_choices(),
                 "angle_snap": self.angle_snap, "dirty": self.dirty, "profile_pending": self.profile_pending,
                 "status": self.status, "busy": sorted(self.busy),
                 "apply_flash": None if flash is None else {"text": flash[0], "tone": flash[1]},
                 "apply_result": self.apply_result,
                 "pending_changes": [name for name, old, new in zip(
                     ("DPI stages", "Stage colors", "Polling rate", "Lift-off distance", "Debounce", "Motion sync",
-                     "Ripple control", "Angle snap", "Sleep timer", "Onboard profile", "Lighting color", "Brightness"),
+                     "Ripple control", "Angle snap", "Sleep timer", "Onboard profile", "Lighting color", "Brightness",
+                     "Lighting mode", "Number of DPI stages"),
                     self._applied, self._device_snapshot()) if old != new],
                 "bindings": self.bindings_view(), "actions": list(ACTIONS),
                 "macros": self.macro_library(), "profiles": self.profiles(),
@@ -1566,7 +1998,8 @@ class Controller:
                 "firmware_installer": self.firmware_view(),
                 "notices": list(self.notices), "slot_read": self.slot_read,
                 "settings": {"startup": startup.is_enabled(), "close_to_tray": self.close_to_tray,
-                             "theme": self.theme, "check_updates": self.check_updates},
+                             "theme": self.theme, "check_updates": self.check_updates,
+                             "download_photos": self.download_photos},
                 "update": dict(self.update),
             }
 
@@ -1576,9 +2009,38 @@ class Controller:
             self.rev += 1
 
 
-def _cable_state() -> str:
+def _photo_version() -> int:
+    try:
+        from . import device_image
+    except ImportError:
+        return 0
+    return device_image.version
+
+
+def _photo_source(model) -> str | None:
+    try:
+        from . import device_image
+    except ImportError:
+        return None
+    return device_image.sources.get(model.key)
+
+
+def _thumbnail(img, height: int = 200) -> str | None:
+    if img is None:
+        return None
+    import base64
+    import io
+    box = img.getchannel("A").getbbox() or (0, 0, *img.size)
+    img = img.crop(box)
+    img = img.resize((max(1, round(img.width * height / img.height)), height))
+    buf = io.BytesIO()
+    img.save(buf, "PNG", optimize=True)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _cable_check(model=None):
     from . import fw_install
     try:
-        return fw_install.cable_state()
+        return fw_install.cable_check(model)
     except Exception:
-        return "none"
+        return "none", None

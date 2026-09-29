@@ -8,14 +8,13 @@ import time
 from ctypes import wintypes
 from typing import Callable
 
-from .protocol import R5_PIDS, R5_VID
+from .models import ALL_IDS
 
 WM_INPUT, WM_CLOSE, WM_DESTROY = 0x00FF, 0x0010, 0x0002
 RID_INPUT, RIM_TYPEMOUSE, RIDI_DEVICENAME = 0x10000003, 0, 0x20000007
 RIDEV_INPUTSINK, RIDEV_REMOVE = 0x00000100, 0x00000001
 HWND_MESSAGE = wintypes.HWND(-3)
-VENDOR_TAG = f"VID_{R5_VID:04X}"
-PRODUCT_TAGS = tuple(f"PID_{pid:04X}" for pid in R5_PIDS)
+ID_TAGS = tuple(f"VID_{vid:04X}&PID_{pid:04X}" for vid, pid in ALL_IDS)   # every mouse Dorsal knows
 
 BUTTON_FLAGS = {
     0x0001: ("Left", True), 0x0002: ("Left", False),
@@ -98,7 +97,7 @@ class RawMouseListener:
             buf = ctypes.create_unicode_buffer(size.value + 1)
             u32.GetRawInputDeviceInfoW(handle, RIDI_DEVICENAME, buf, ctypes.byref(size))
             name = buf.value.upper()
-            self._names[key] = VENDOR_TAG in name and any(tag in name for tag in PRODUCT_TAGS)
+            self._names[key] = any(tag in name for tag in ID_TAGS)
         return self._names[key]
 
     def _run(self):

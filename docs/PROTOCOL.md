@@ -130,14 +130,22 @@ Wired only. The dongle can't flash. See
 
 | Step | Bytes 2–6 | Notes |
 |---|---|---|
-| Enter bootloader | `02 01 00 00 B0` | mouse re-enumerates as `0x373E:0xB046` |
+| Enter bootloader | `02 01 00 00 B0` | the R5 re-enumerates as `0x373E:0xB046` |
 | Version | `02 06 B0 80` | |
 | Erase | `02 08 B0 01` | wait ~1.5 s |
 | Program | `02 (n+5) B0 02 n` + 4-byte big-endian address + n data bytes **XOR `0x55`** | n = 32 (two 16-byte segments); pause 5 ms every 4 KB |
-| Verify | `02 20 B0 83 20` + address | **required**: unverified writes are rolled back |
+| Verify | `02 20 B0 83 20` + address | **required**: unverified writes are rolled back. The reply carries the 32 bytes the bootloader holds at that address (see below) |
 | Exit bootloader | `02 01 B0 04 B0` | reboots into the application |
 
-Every program/verify packet is resent until the reply has `0xB0` at byte 5 or 6.
+Every mouse has its own bootloader id, see `models.py` (a LAMZU one keeps the mouse's own vendor id:
+`0x37B0:0x0006` on the Tachi). Every program/verify packet is resent until the reply has `0xB0` at byte 5
+or 6. A bootloader that reports status puts `0xA1` (or `0x02`) at byte 1 of a reply, our `0xB0` comes back at
+byte 5, and a verify's 32 bytes start at byte 12, XOR `0x55` again (byte 0 is the report id). Those offsets come
+from the verify code in Attack Shark's app and LAMZU's web hub, which read the flash back, once per 32-byte block
+from the block's own address, and only restart the mouse if it matches the file. Dorsal does the same for those
+addresses (its verifies 16 bytes into each block are only acknowledged), and if the version reply has no status
+byte it can't and only checks the acknowledgements. Nobody has run this read-back on a real bootloader, so the R5,
+which flashed fine without it, isn't read back unless asked (`--readback`).
 
 
 ## Buttons and onboard macros (Dorsal 2.1)

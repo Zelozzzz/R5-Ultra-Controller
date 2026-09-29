@@ -65,7 +65,7 @@ def test_stage_dpis_big_endian_and_clamped():
     pkt = p.stage_dpis(1, [(800, 1600), (50, 99999)])
     assert pkt[:8] == bytes([0, 0, 2, 2 + 2 * 4, 1, 1, 1, 2])
     assert pkt[8:12] == bytes([0x03, 0x20, 0x06, 0x40])        # 800, 1600
-    assert pkt[12:16] == bytes([0x00, 0x64, 0xA4, 0x10])       # clamped to 100, 42000
+    assert pkt[12:16] == bytes([0x00, 0x64, 0xEA, 0x60])       # clamped to 100, 60000 (each mouse's own top is core's job)
 
 
 def test_parse_stage_dpis_roundtrip():
@@ -99,3 +99,31 @@ def test_angle_snap_and_profile_packets_match_the_official_app():
     assert p.active_profile(3)[:7] == bytes([0, 0, 2, 1, 0, 5, 3])
     assert p.get_active_profile()[:7] == bytes([0, 0, 2, 1, 0, 0x85, 0])
     assert p.READABLE["angle_snap"] == (1, 0x04, 2)
+
+
+def test_sensor_model_read():
+    d = p.get_sensor_model()
+    assert len(d) == p.PACKET_SIZE and list(d[2:6]) == [2, 1, 1, 0x8F]
+    assert p.lift_off_choices(1) == ["1 mm", "2 mm"]
+    assert p.lift_off_choices(2) == p.lift_off_choices(None) == list(p.LIFT_OFF_DISTANCES)
+
+
+def test_every_settings_packet_can_be_read_back_into_what_it_means():
+    # other-protocol mice get Dorsal's usual packets and turn them into their own calls
+    d = p.describe_write
+    assert d(p.stage_dpis(1, [(400, 400), (800, 800), (26000, 26000)])) == ("stage_dpis", [(400, 400), (800, 800), (26000, 26000)])
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (1, 2, 3), (4, 5, 6), (7, 8, 9)]
+    assert d(p.dpi_stage_colors(1, colors)) == ("stage_colors", colors)
+    for hz, byte in ((125, 8), (1000, 1), (4000, 64), (8000, 128)):
+        assert d(p.polling_rate(1, byte)) == ("polling", hz)
+    assert d(p.lift_off_distance(1, 0.7)) == ("lod", 0.7) and d(p.lift_off_distance(1, 2)) == ("lod", 2.0)
+    assert d(p.debounce_time(1, 4)) == ("debounce", 4)
+    assert d(p.sleep_time(1, 300)) == ("sleep_s", 300)
+    assert d(p.lightness(1, 200, True)) == ("brightness", 200)
+    assert d(p.motion_sync(1, True)) == ("motion_sync", True) and d(p.ripple_control(1, False)) == ("ripple", False)
+    assert d(p.angle_snap(1, True)) == ("angle_snap", True) and d(p.tracking_mode(1, 1)) == ("competitive", True)
+    assert d(p.active_dpi_stage(1, 3)) == ("active_stage", 3)
+    assert d(p.active_profile(2)) == ("profile", 2) and d(p.reset_profile(3)) == ("reset_profile", 3)
+    name, light = d(p.light_effect(1, p.MODE_STATIC, 0, (9, 8, 7)))
+    assert name == "light_effect" and light.rgb == (9, 8, 7) and light.mode == p.MODE_STATIC
+    assert d(p.get_stage_dpis(1)) is None and d(p.get_battery()) is None     # reads aren't writes

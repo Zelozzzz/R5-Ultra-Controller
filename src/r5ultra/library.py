@@ -20,8 +20,8 @@ def profile_document(name: str, settings: dict) -> dict:
         raise ValueError("The profile is missing settings.")
     dpis = settings["stage_dpis"]
     if (not isinstance(dpis, list) or len(dpis) != 6
-            or any(type(v) is not int or not 100 <= v <= 42000 for v in dpis)):
-        raise ValueError("A profile needs six DPI values between 100 and 42,000.")
+            or any(type(v) is not int or not protocol.DPI_MIN <= v <= protocol.DPI_TOP for v in dpis)):
+        raise ValueError(f"A profile needs six DPI values between {protocol.DPI_MIN} and {protocol.DPI_TOP:,}.")
     colors = settings["stage_colors"]
     if not isinstance(colors, list) or len(colors) != 6:
         raise ValueError("A profile needs six DPI colors.")
@@ -29,9 +29,11 @@ def profile_document(name: str, settings: dict) -> dict:
         if not isinstance(color, str):
             raise ValueError("Invalid profile color.")
         protocol.hex_to_rgb(color)
-    if settings["polling"] not in protocol.POLLING_RATES or settings["lod"] not in protocol.LIFT_OFF_DISTANCES:
+    if settings["polling"] not in protocol.POLLING_RATES or protocol.lod_mm(settings["lod"]) is None:
         raise ValueError("Unsupported polling rate or lift-off distance.")
-    for key, lo, hi in (("brightness", 0, 255), ("debounce", 0, 20)):
+    from . import models
+    top_debounce = max(m.debounce[0] for m in models.MODELS)             # the X11's goes to 50, the others stop at 20
+    for key, lo, hi in (("brightness", 0, 255), ("debounce", 0, top_debounce)):
         if type(settings[key]) is not int or not lo <= settings[key] <= hi:
             raise ValueError(f"{key} must be between {lo} and {hi}.")
     for key in ("motion_sync", "ripple", "always_on"):
@@ -42,6 +44,10 @@ def profile_document(name: str, settings: dict) -> dict:
         kept["sleep_min"] = settings["sleep_min"]
     if type(settings.get("angle_snap")) is bool:
         kept["angle_snap"] = settings["angle_snap"]
+    if type(settings.get("stage_count")) is int and 1 <= settings["stage_count"] <= 6:
+        kept["stage_count"] = settings["stage_count"]
+    if settings.get("color_mode") in ("single", "stages"):
+        kept["color_mode"] = settings["color_mode"]
     return {"format": "dorsal-profile", "version": 1, "name": name.strip(), "settings": kept}
 
 

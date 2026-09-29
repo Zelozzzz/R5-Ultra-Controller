@@ -19,7 +19,7 @@ def cmd_status(args) -> int:
     from .device import R5Mouse, connection_type
     link = connection_type()
     if link is None:
-        print("R5 Ultra : not found")
+        print("Mouse    : not found")
         return 1
     mouse = R5Mouse()
     with mouse:
@@ -27,7 +27,7 @@ def cmd_status(args) -> int:
         firmware = mouse.read_firmware_version()
         stages = mouse.read_stage_dpis(args.profile)
     q = mouse.link.quality()
-    print(f"R5 Ultra : connected via {link}")
+    print(f"Mouse    : {mouse.model.name}, connected via {link}")
     if battery is None or battery.asleep:
         print("Battery  : unknown (mouse asleep? move it and try again)")
     else:
@@ -158,7 +158,12 @@ def cmd_fw_info(args) -> int:
 
 def cmd_fw_patch(args) -> int:
     from . import firmware as fw
-    known = fw.build_patched(args.source, args.output)
+    from . import models
+    from .wizard import patched_path
+    model = models.by_key(args.model)
+    output = args.output or str(patched_path(model))
+    known = fw.build_patched(args.source, output, model)
+    args.output = output
     print(f"Wrote {args.output}\n  {known.name}\n  sha256 {known.sha256}")
     return 0
 
@@ -166,15 +171,31 @@ def cmd_fw_patch(args) -> int:
 def cmd_fw_flash(args) -> int:
     from . import firmware as fw
     from . import flasher
+    from . import models
     ih = fw.load_hex(args.file)
     known = fw.identify(ih)
     print(f"Firmware: {known.name if known else 'UNRECOGNIZED'}")
+    # which mouse it goes to is settled before anything is asked or sent
+    known, target = flasher.plan(ih, args.allow_unknown, models.by_key(args.model) if args.model else None)
+    print(f"Mouse   : {target.name} (USB {target.vid:04X}:{target.wired_pid:04X}, "
+          f"install mode {target.vid:04X}:{target.bootloader_pid:04X})")
+    if target.tried != "your mouse":
+        print(f"NOTE: nobody has flashed this on a real {target.name} yet, it has only been run on the virtual mouse.")
+    if args.no_readback:
+        print("NOTE: --no-readback, nothing will compare what the mouse ends up holding with the file.")
+    if getattr(args, "readback", False) and not target.flash_readback:
+        print(f"NOTE: the {target.name} has always been flashed without reading the blocks back, so that hasn't run on "
+              "a real one. If it stops at the first block, run this again without --readback.")
     if not args.yes:
         print("WARNING: this overwrites the mouse firmware and can brick it. USB cable required.")
         if input("Type FLASH to continue: ").strip() != "FLASH":
             print("Cancelled. Nothing was written.")
             return 1
-    flasher.flash(ih, log=print, allow_unknown=args.allow_unknown)
+    readback = False if args.no_readback else True if getattr(args, "readback", False) else None     # None: as the mouse goes
+    verified = flasher.flash(ih, log=print, allow_unknown=args.allow_unknown, model=target, readback=readback)
+    if not verified:
+        print("NOTE: what the mouse holds couldn't be compared with the file (this bootloader can't be read back, "
+              "or --no-readback), so the flash isn't confirmed. Check that the mouse works.")
     return 0
 
 
@@ -212,8 +233,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("file")
     s.set_defaults(func=cmd_fw_info)
     s = fw.add_parser("patch", help="build the LED-patched firmware from your stock copy")
-    s.add_argument("source", help="the official installer .exe, its app.asar, or the stock .hex")
-    s.add_argument("-o", "--output", default=str(DEFAULT_PATCHED))
+    s.add_argument("source", help="the official installer .exe, its app.asar, or the stock .hex (the only choice "
+                                  "for a LAMZU mouse, from its web hub)")
+    from . import models
+    s.add_argument("--model", default="r5ultra", choices=[m.key for m in models.MODELS if m.has_firmware],
+                   help="which mouse to build it for (default r5ultra)")
+    s.add_argument("-o", "--output", default=None, help=f"default {DEFAULT_PATCHED.name} for the R5 Ultra")
     s.set_defaults(func=cmd_fw_patch)
     fw.add_parser("wizard", help="step-by-step: build the LED patch or restore stock, then flash"
                   ).set_defaults(func=cmd_fw_wizard)
@@ -222,6 +247,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
     s.add_argument("--allow-unknown", action="store_true",
                    help="flash an image the tool doesn't recognize (dangerous)")
+    s.add_argument("--model", default=None, choices=[m.key for m in models.MODELS if m.has_firmware],
+                   help="which mouse the file is for. Needed with --allow-unknown, otherwise the file says")
+    reads = s.add_mutually_exclusive_group()
+    reads.add_argument("--no-readback", action="store_true",
+                       help="don't compare what the bootloader holds with the file after writing (to tell a misread "
+                            "answer from a bad write, only if it failed on a mouse that flashed fine before)")
+    reads.add_argument("--readback", action="store_true",
+                       help="compare it even on the R5, which has always been flashed without (nobody has run that "
+                            "on a real R5 yet)")
     s.set_defaults(func=cmd_fw_flash)
     return ap
 

@@ -25,13 +25,20 @@ def startup_command() -> str:
 
 
 def is_enabled() -> bool:
+    """On if Windows will start it: the current entry, or one from before the rename (that still starts it,
+    and switching it on here replaces it)."""
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REG_PATH) as key:
-            value, _ = winreg.QueryValueEx(key, REG_NAME)
-            return bool(value)
+            for name in (REG_NAME, *OLD_REG_NAMES):
+                try:
+                    if winreg.QueryValueEx(key, name)[0]:
+                        return True
+                except FileNotFoundError:
+                    continue
     except (ImportError, OSError):
-        return False
+        pass
+    return False
 
 
 def set_enabled(enabled: bool) -> None:
@@ -45,7 +52,8 @@ def set_enabled(enabled: bool) -> None:
                 except FileNotFoundError:
                     pass
         else:
-            try:
-                winreg.DeleteValue(key, REG_NAME)
-            except FileNotFoundError:
-                pass
+            for name in (REG_NAME, *OLD_REG_NAMES):
+                try:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
+                    pass

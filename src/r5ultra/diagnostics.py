@@ -12,7 +12,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 SENSOR_MAX_IPS = 750
-SUPPORTED_FIRMWARE = "0.0.12.0"
+# what each mouse reports for the firmware Dorsal patches (patched reports the same)
+# versions Dorsal has a known stock and patched image for (the app's, plus newer ones from the web hub)
+SUPPORTED_FIRMWARE = {"r5ultra": ("0.0.12.0",), "m5ultra": ("0.0.8.0", "0.0.9.0"), "r6": ("0.0.2.0", "0.0.3.1"),
+                      "lamzu-maya-x": ("0.0.0.19",), "lamzu-tachi": ("0.0.0.15",), "lamzu-inca": ("0.0.0.15",),
+                      "lamzu-maya": ("0.0.0.15",), "lamzu-paro": ("0.0.0.15",), "lamzu-thorn": ("0.0.0.15",)}
+
+
+def version_at_least(version: str, wanted: str) -> bool:
+    """"0.0.3.1" style versions, compared number by number."""
+    def parts(v):
+        return tuple(int(x) for x in v.split(".") if x.isdigit())
+    try:
+        return parts(version) >= parts(wanted)
+    except ValueError:
+        return False
 
 
 class PollingMeter:
@@ -357,6 +371,8 @@ def settings_evidence(settings, expected: dict) -> list[dict]:
 
     rows = []
     for key, name, actual in specs:
+        if key in getattr(settings, "skip", ()):         # this mouse doesn't have it
+            continue
         wanted = expected.get(key)
         same = actual == wanted
         if key == "stage_dpis" and actual is not None and wanted is not None:

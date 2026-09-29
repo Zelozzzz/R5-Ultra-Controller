@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps, ImageStat
 
 SS = 3
 
@@ -42,7 +42,7 @@ def _blur(img: Image.Image, radius: float) -> Image.Image:
 class PhotoMouseArt:
 
     def __init__(self, width: int, height: int, bg: str, photo: Image.Image,
-                 backdrop: Image.Image | None = None):
+                 backdrop: Image.Image | None = None, led_spot: tuple | None = None):
         self.size = (width, height)
         W, H = size = (width * 2, height * 2)
         src = photo.crop(photo.getchannel("A").getbbox())
@@ -60,6 +60,27 @@ class PhotoMouseArt:
         hull = _blur(grown, r).point(lambda v: 255 if v > 236 else 0)
         hull = _blur(ImageChops.lighter(hull, alpha), 1.0)
         holes = ImageChops.subtract(hull, alpha)
+        # solid shells (R6) light up through a little LED window instead of holes. the photo has it
+        # blue, so find it, turn it into a dark grey (keeps its shading) and let the light layers color it
+        red, _, blue, _ = mouse.split()
+        led = ImageChops.multiply(ImageChops.subtract(blue, red).point(lambda v: 255 if v > 90 else 0),
+                                  alpha.point(lambda v: 255 if v > 200 else 0))
+        # only a small dot counts, so a bluish photo someone imports doesn't get repainted
+        has_led = (ImageStat.Stat(holes).mean[0] < 2 and led.getbbox() is not None
+                   and ImageStat.Stat(led).mean[0] < 1)
+        if not has_led and led_spot and ImageStat.Stat(holes).mean[0] < 2:
+            # a picture without its LED drawn in (the F1 Air's render): put the window where the real one is
+            cx, cy, fw, fh = led_spot
+            x, y, hw, hh = ox + cx * mw, oy + cy * mh, max(1.5, fw * mw / 2), max(2.0, fh * mh / 2)
+            led = Image.new("L", size, 0)
+            ImageDraw.Draw(led).rounded_rectangle((x - hw, y - hh, x + hw, y + hh), radius=hw, fill=255)
+            led = ImageChops.multiply(led, alpha.point(lambda v: 255 if v > 200 else 0))
+            has_led = led.getbbox() is not None
+        if has_led:
+            led = led.filter(ImageFilter.MaxFilter(3))
+            grey = ImageOps.grayscale(mouse).point(lambda v: 12 + v * 0.2)
+            mouse.paste(Image.merge("RGBA", (grey, grey, grey, alpha)), (0, 0), led)
+        solid = ImageStat.Stat(holes).mean[0] < 2
 
         if backdrop is not None:
             stage = backdrop.convert("RGBA").resize(size, Image.LANCZOS)
@@ -81,9 +102,14 @@ class PhotoMouseArt:
             rd.ellipse((lx - rad * 0.75, ly - rad, lx + rad * 0.75, ly + rad), fill=value)
         radial = _blur(radial, mh * 0.07)
         through = ImageChops.multiply(holes, radial)
+        core_src = through
+        if has_led:
+            through = ImageChops.lighter(through, _blur(led, mw * 0.008))
         scatter = ImageChops.multiply(_blur(through, mw * 0.012).point(lambda v: min(255, v * 1.6)),
                                       alpha).point(lambda v: v * 0.55)
         bloom = _blur(through, mw * 0.06).point(lambda v: min(255, v * 1.5)).point(lambda v: v * 0.45)
+        if has_led:
+            bloom = ImageChops.lighter(bloom, _blur(led, mw * 0.03).point(lambda v: min(255, v * 3)))
         outside_bloom = ImageChops.subtract(bloom, hull).point(lambda v: v * 0.3)
         spill = ImageChops.subtract(_blur(hull, mw * 0.045).point(lambda v: min(255, v * 1.6)), hull)
         ambient = ImageChops.subtract(_blur(hull, mw * 0.16).point(lambda v: min(255, v * 1.3)), hull)
@@ -100,20 +126,29 @@ class PhotoMouseArt:
         under = ImageChops.multiply(under, keep)
         bloom = ImageChops.lighter(ImageChops.multiply(bloom, hull), ImageChops.multiply(outside_bloom, keep))
 
+        if has_led and solid:
+            # a solid shell lights up at its LED and nowhere else: the lit window itself, a tight glow hugging it, and a
+            # soft spill on the shell around it. Nothing is washed over the shell, and whatever is printed on it stays dark
+            dot = _blur(led, 0.9)
+            hug = _blur(led, mw * 0.013).point(lambda v: min(255, v * 7)).point(lambda v: v * .85)
+            spill_dot = _blur(led, mw * 0.04).point(lambda v: min(255, v * 4)).point(lambda v: v * .55)
+            through = ImageChops.lighter(through, ImageChops.lighter(dot, ImageChops.lighter(hug, spill_dot)))
         glow = ImageChops.lighter(ImageChops.lighter(through, scatter), ImageChops.lighter(bloom, under))
         glow = ImageChops.multiply(glow, ImageChops.invert(_blur(side, mw * 0.05).point(lambda v: v * 0.8)))
         self.glow = glow.resize(self.size, Image.LANCZOS)
-        self.core = through.point(lambda v: int(255 * (v / 255) ** 3)).resize(self.size, Image.LANCZOS)
+        # the white core stays off the LED dot, it would wash the small window out
+        self.core = core_src.point(lambda v: int(255 * (v / 255) ** 3)).resize(self.size, Image.LANCZOS)
 
 
 _photo_cache: dict = {}
 
 
 def real_photo():
-    if "photo" not in _photo_cache:
-        from . import device_image
-        _photo_cache["photo"] = device_image.load()
-    return _photo_cache["photo"]
+    from . import device_image
+    key = device_image.current.key
+    if key not in _photo_cache:
+        _photo_cache[key] = device_image.load()
+    return _photo_cache[key]
 
 
 def forget_photo():

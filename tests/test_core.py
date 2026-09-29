@@ -179,3 +179,96 @@ def test_sleep_setting_replaces_always_on(ctrl):
     assert ctrl.sleep_seconds() == p.SLEEP_NEVER and ctrl.always_on
     with pytest.raises(ValueError):
         ctrl.set_setting("sleep_min", 7)
+
+
+def test_fewer_dpi_stages(ctrl, monkeypatch):
+    import time
+    monkeypatch.setattr(core, "DPI_WRITE_DELAY_S", 0.01)
+    ctrl.set_active_stage(5)
+    ctrl.set_stage_count(3)
+    assert ctrl.stage_count == 3 and ctrl.active_stage == 3 and ctrl.dirty
+    ctrl.set_stage_count(0)
+    assert ctrl.stage_count == 1
+    ctrl.set_stage_count(9)
+    assert ctrl.stage_count == 6
+    ctrl.set_stage_count(2)
+    ctrl.set_active_stage(5)
+    assert ctrl.active_stage == 2
+    s = ctrl.snapshot()
+    assert s["stage_count"] == 2 and len(s["stage_dpis"]) == 6
+    assert "Number of DPI stages" in s["pending_changes"]
+
+    sent = []
+    ctrl.connected = True
+    monkeypatch.setattr(ctrl, "background", lambda work, done=None, **kw: sent.append(work()) or True)
+    monkeypatch.setattr(ctrl.mouse, "command", lambda packet: packet)
+    monkeypatch.setattr(type(ctrl.mouse), "__enter__", lambda self: self)
+    ctrl.set_stage_dpi(0, 900)
+    time.sleep(0.2)
+    assert sent and sent[-1][7] == 2                  # the mouse gets a 2-stage table
+
+
+def test_stage_count_follows_what_the_mouse_says(ctrl):
+    from r5ultra.device import MouseSettings
+    ctrl.stage_dpis = [400, 800, 1600, 3200, 6400, 12800]
+    ctrl._fill_from_settings(MouseSettings(stage_dpis=[(1000, 1000), (2000, 2000), (3000, 3000)]))
+    assert ctrl.stage_count == 3
+    assert ctrl.stage_dpis == [1000, 2000, 3000, 3200, 6400, 12800]   # the unused ones are kept
+    assert not ctrl.dirty
+
+
+def test_sensor_decides_lift_off_and_competitive(ctrl):
+    from r5ultra import models
+    assert ctrl.snapshot()["lod_values"] == ["0.7 mm", "1 mm", "2 mm"] and ctrl.competitive_supported
+    ctrl.sensor = 1                                   # a PAW3395, like the official app handles it
+    assert ctrl.snapshot()["lod_values"] == ["1 mm", "2 mm"] and not ctrl.competitive_supported
+    with pytest.raises(ValueError):
+        ctrl.set_setting("lod", "0.7 mm")
+    ctrl.sensor = 2
+    ctrl.model = models.R6                            # its firmware turns Competitive Mode down
+    ctrl.connected = True
+    assert not ctrl.snapshot()["competitive_supported"]
+    with pytest.raises(ValueError, match="Competitive"):
+        ctrl.competitive_mode(True)
+
+
+def test_a_color_per_dpi_stage(ctrl):
+    ctrl.set_color("#112233")
+    ctrl.set_color_mode("stages")
+    assert ctrl.color_mode == "stages" and ctrl.effect is None
+    ctrl.active_stage = 3
+    ctrl.set_color("#00ff00")                         # edits the stage the mouse is on
+    assert ctrl.stage_colors[2] == "#00FF00" and ctrl.color == "#112233"
+    s = ctrl.snapshot()
+    assert s["color"] == "#00FF00" and s["color_mode"] == "stages"
+    ctrl.brightness = 255
+    colors = ctrl._led_colors()
+    assert colors[2] == (0, 255, 0) and len(set(colors)) > 1
+    assert "Lighting mode" in s["pending_changes"]
+    ctrl.set_color_mode("single")
+    assert ctrl._led_colors() == [(0x11, 0x22, 0x33)] * 6
+    with pytest.raises(ValueError):
+        ctrl.set_color_mode("disco")
+    ctrl.runner.stop()
+
+
+def test_a_saved_profile_with_0_7_mm_on_a_3395_mouse(ctrl):
+    ctrl.sensor = 1
+    settings = dict(ctrl.cfg, lod="0.7 mm")
+    ctrl._stage_profile(settings)
+    assert ctrl.lod == "1 mm"
+
+
+def test_r6_gets_competitive_mode_from_firmware_0_0_3_1(ctrl):
+    from r5ultra import models
+    ctrl.model, ctrl.sensor = models.R6, 2
+    ctrl.firmware = None
+    assert not ctrl.competitive_supported               # not read yet: hidden
+    ctrl.firmware = "0.0.2.0"
+    assert not ctrl.competitive_supported
+    ctrl.firmware = "0.0.3.1"
+    assert ctrl.competitive_supported
+    ctrl.firmware = "0.0.10.0"
+    assert ctrl.competitive_supported
+    ctrl.model = models.R8
+    assert not ctrl.competitive_supported

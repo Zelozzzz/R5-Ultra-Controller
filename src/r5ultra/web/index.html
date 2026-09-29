@@ -49,7 +49,7 @@
   <div class="device">
     <div class="mouse-art mini" data-art></div>
     <div class="device-text">
-      <b>R5 ULTRA</b>
+      <b id="header-model">MOUSE</b>
       <span class="link"><i class="dot" id="link-dot"></i><span id="link-text">Looking for the mouse…</span></span>
     </div>
   </div>
@@ -60,7 +60,7 @@
       <span class="battery-bar"><i id="battery-fill"></i></span>
     </div>
     <div class="menu-host">
-      <button class="btn pill-sm" id="profile-btn"><span id="profile-label">Profile 1</span><svg class="ic sm"><use href="#i-chevron"/></svg></button>
+      <button class="btn pill-sm" id="profile-btn" aria-haspopup="menu" aria-expanded="false"><span id="profile-label">Onboard 1</span><svg class="ic sm"><use href="#i-chevron"/></svg></button>
       <div class="menu glass-menu" id="profile-menu" hidden></div>
     </div>
   </div>
@@ -70,7 +70,7 @@
   <button data-tab="home" class="tab on">Home</button>
   <button data-tab="buttons" class="tab">Buttons</button>
   <button data-tab="macros" class="tab">Macros</button>
-  <button data-tab="profiles" class="tab">Profiles</button>
+  <button data-tab="profiles" class="tab">Setups</button>
   <button data-tab="diagnostics" class="tab">Diagnostics</button>
   <button data-tab="settings" class="tab">Settings</button>
 </nav>
@@ -89,14 +89,20 @@
         <input type="range" id="dpi" min="0" max="1000" step="1" aria-label="DPI">
         <div class="row between tiny muted range-ends"><span id="dpi-min">100</span><span id="dpi-max">42,000</span></div>
         <div class="stages" id="stages"></div>
+        <div class="row between tiny muted stage-count">
+          <span id="stage-count-label">DPI button goes through</span>
+          <span class="row"><button class="btn quiet sm round" id="stage-less" aria-label="One stage less">−</button>
+            <b id="stage-count">6 stages</b>
+            <button class="btn quiet sm round" id="stage-more" aria-label="One stage more">+</button></span>
+        </div>
 
         <div class="section">
-          <div class="row between"><span class="label">Polling rate <span class="tip" tabindex="0" data-tip="How often the mouse reports to your PC. Higher is smoother but uses more CPU and battery. The cable tops out at 1000 Hz.">i</span></span><span class="muted tiny" id="polling-note">Hz</span></div>
+          <div class="row between"><span class="label">Polling rate <span class="tip" tabindex="0" role="img" aria-label="About polling rate" data-tip="How often the mouse reports to your PC. Higher is smoother but uses more CPU and battery. On Attack Shark's own mice the cable tops out at 1000 Hz.">i</span></span><span class="muted tiny" id="polling-note">Hz</span></div>
           <div class="notched" id="polling"></div>
         </div>
         <div class="section">
-          <div class="label">Lift-off distance <span class="tip" tabindex="0" data-tip="How high you can lift the mouse before it stops tracking. Lower suits players who lift and reposition a lot.">i</span></div>
-          <div class="notched narrow" id="lod"></div>
+          <div class="label">Lift-off distance <span class="tip" tabindex="0" role="img" aria-label="About lift-off distance" data-tip="How high you can lift the mouse before it stops tracking. Lower suits players who lift and reposition a lot.">i</span></div>
+          <div class="notched" id="lod"></div>
         </div>
       </div>
     </div>
@@ -123,7 +129,7 @@
     </div>
 
     <div class="glass pane side">
-      <div class="pane-head"><h3 class="pane-title">Lighting</h3></div>
+      <div class="pane-head"><h3 class="pane-title">Lighting</h3><span class="grow"></span><span class="muted sm" id="lighting-storage"></span></div>
       <div class="pane-body lighting">
         <div class="row between">
           <span class="label">Color</span>
@@ -133,11 +139,13 @@
         <canvas class="sv" id="sv" aria-label="Pick a color"></canvas>
         <input type="range" id="hue" min="0" max="360" step="1" class="hue" aria-label="Hue">
         <div class="presets" id="presets"></div>
+        <label class="switch per-stage" data-tip="Every DPI stage gets its own color, like the official app. Pick a stage below, then its color.">
+          <input type="checkbox" role="switch" id="per-stage"><span></span>Color per DPI stage</label>
+        <div class="stage-colors" id="stage-colors" hidden></div>
         <div class="row between mt"><span class="label">Brightness</span><span class="muted sm" id="bright-text">78%</span></div>
         <input type="range" id="brightness" min="0" max="255" step="1" aria-label="Brightness">
         <div class="label mt">Effect</div>
         <div class="segmented fx-seg" id="effects"></div>
-        <p class="storage-note" id="lighting-storage"></p>
         <div class="rainbow" id="rainbow-row" hidden>
           <div class="row between"><span class="label sm">Spectrum speed</span><span class="muted sm" id="rainbow-text"></span></div>
           <input type="range" id="rainbow-speed" min="0" max="1000" step="1" aria-label="Spectrum speed">
@@ -176,7 +184,6 @@
             <div class="callouts selectable" id="btn-callouts"></div>
           </div>
         </div>
-        <div class="pane-foot"><span class="muted sm">Changes go to profile <b id="assign-profile">1</b> on the mouse.</span></div>
       </div>
     </div>
   </section>
@@ -224,10 +231,11 @@
         <div class="table flush" id="macro-table"></div>
         <div class="pane-foot">
           <span class="note" id="macro-feedback"></span><span class="grow"></span>
-          <span class="overline" data-tip="The mouse holds 3 macros, shared by every profile. To put one on a button, use the Buttons tab. It uploads the macro for you.">On the mouse</span>
+          <span class="overline" data-tip="The mouse holds 3 macros, shared by every onboard profile. To put one on a button, use the Buttons tab. It uploads the macro for you.">On the mouse</span>
           <select class="select sm" id="macro-slot" aria-label="Slot"><option value="1">Slot 1</option><option value="2">Slot 2</option><option value="3">Slot 3</option></select>
           <button class="btn sm" id="macro-upload">Upload</button>
           <button class="btn quiet sm" id="macro-read">Read slot</button>
+          <button class="btn quiet sm danger" id="macro-clear">Clear slot</button>
         </div>
       </div>
     </div>
@@ -270,15 +278,10 @@
 
       <div class="pane-body diag-view" data-view="overview">
         <div class="diagnostic-command">
-          <div><span class="overline">Device inspection</span><h2 id="diagnostic-title">Check your R5 Ultra</h2>
+          <div><span class="overline">Device inspection</span><h2 id="diagnostic-title">Check your mouse</h2>
             <p id="diagnostic-summary">Read the device, check its configuration and time 30 command responses.</p>
             <span class="note" id="diagnostic-stamp">No diagnostic run yet. Nothing has been marked as passed.</span></div>
           <button class="btn primary" id="health-run">Run diagnostics</button>
-        </div>
-        <div class="test-route" aria-label="Diagnostic tests">
-          <button data-diagnostic-view="overview" class="on"><span class="route-number">1</span><span><b>Inspect the device</b><small>Settings, firmware and command replies</small></span></button>
-          <button data-diagnostic-view="input"><span class="route-number">2</span><span><b>Measure input</b><small>15-second movement and button capture</small></span></button>
-          <button data-diagnostic-view="connection"><span class="route-number">3</span><span><b>Check consistency</b><small>Longer command test and battery history</small></span></button>
         </div>
         <div class="readouts">
           <div class="block readout"><span class="overline">Commands answered</span><b id="ro-link">—</b><small id="ro-link-d">Run diagnostics</small></div>
@@ -365,7 +368,7 @@
           <button class="btn quiet sm" id="traffic-pause">Pause</button>
           <button class="btn quiet sm" id="traffic-clear">Clear</button>
           <button class="btn quiet sm" id="traffic-copy">Copy</button>
-          <label class="switch"><input type="checkbox" id="traffic-hidefx" checked><span></span>Hide lighting frames</label>
+          <label class="switch"><input type="checkbox" role="switch" id="traffic-hidefx" checked><span></span>Hide lighting frames</label>
           <span class="grow"></span>
           <span class="muted sm" id="probe-result">Read-only: probes never change a setting.</span>
           <select class="select sm" id="probe-name" aria-label="Probe"></select>
@@ -391,10 +394,10 @@
           <div class="block group">
             <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-power"/></svg></span>
               <span class="stext"><b>Start with Windows</b><small>Opens quietly in the tray and brings your lighting back after a restart.</small></span>
-              <span class="switch"><input type="checkbox" id="set-startup"><span></span></span></label>
+              <span class="switch"><input type="checkbox" role="switch" id="set-startup"><span></span></span></label>
             <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-tray"/></svg></span>
               <span class="stext"><b>Close to tray</b><small>Closing the window keeps Dorsal running so effects keep playing.</small></span>
-              <span class="switch"><input type="checkbox" id="set-tray"><span></span></span></label>
+              <span class="switch"><input type="checkbox" role="switch" id="set-tray"><span></span></span></label>
             <div class="srow"><span class="sicon"><svg class="ic"><use href="#i-palette"/></svg></span>
               <span class="stext"><b>Theme</b><small>Switches instantly.</small></span>
               <div class="segmented" id="theme-seg"><button data-theme="ember">Ember</button><button data-theme="aura">Aura</button><button data-theme="ocean">Ocean</button></div></div>
@@ -406,27 +409,30 @@
               <button class="btn" id="update-btn">Check for updates</button></div>
             <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-power"/></svg></span>
               <span class="stext"><b>Check for updates at startup</b><small>Asks GitHub once when Dorsal opens. Nothing about your PC or mouse is sent.</small></span>
-              <span class="switch"><input type="checkbox" id="set-updates"><span></span></span></label>
+              <span class="switch"><input type="checkbox" role="switch" id="set-updates"><span></span></span></label>
+            <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-mouse"/></svg></span>
+              <span class="stext"><b>Download mouse pictures</b><small>Gets each mouse's photo from its brand's official web hub (xvalleyinno.top for most, controlhub.top for the F1 Air and X11 Ultra, szslxd-tech.com for the X11, shan.ipigame.cn for the Float 88), the same picture their own app shows. Only the picture is downloaded, nothing is sent.</small></span>
+              <span class="switch"><input type="checkbox" role="switch" id="set-photos"><span></span></span></label>
           </div>
         </div>
         <div class="sec" data-view="mouse" hidden>
           <h3 class="sec-title">Mouse</h3>
           <div class="block group">
             <div class="srow top"><span class="sicon"><svg class="ic"><use href="#i-mouse"/></svg></span>
-              <span class="stext"><b>Attack Shark R5 Ultra</b><dl class="stat-rows compact" id="settings-device"></dl></span>
-              <span class="sactions"><button class="btn" id="dev-refresh">Refresh</button>
+              <span class="stext"><b id="settings-model">Attack Shark mouse</b><dl class="stat-rows compact" id="settings-device"></dl></span>
+              <span class="sactions"><button class="btn" id="mouse-pick">Change mouse…</button><button class="btn" id="dev-refresh">Refresh</button>
                 <button class="btn" id="mouse-import" hidden>Import mouse image…</button></span></div>
             <div class="srow"><span class="sicon accent"><svg class="ic"><use href="#i-chip"/></svg></span>
-              <span class="stext"><b>Dorsal firmware</b><small>Always-on RGB LED. Built from your copy of the official software and installed over the USB cable.</small></span>
+              <span class="stext"><b>Dorsal firmware</b><small id="fw-text">Always-on RGB LED. Built from your copy of the official software and installed over the USB cable.</small></span>
               <span class="sactions"><button class="btn quiet" id="fw-doc">How it works</button><button class="btn primary" id="fw-open">Install…</button></span></div>
             <label class="srow"><span class="sicon"><svg class="ic"><use href="#i-arrow"/></svg></span>
               <span class="stext"><b>Angle snap</b><small>Straightens your lines. Keep it off for aiming. Apply to send.</small></span>
-              <span class="switch"><input type="checkbox" id="set-angle"><span></span></span></label>
+              <span class="switch"><input type="checkbox" role="switch" id="set-angle"><span></span></span></label>
             <div class="srow"><span class="sicon"><svg class="ic"><use href="#i-power"/></svg></span>
               <span class="stext"><b>Sleep after</b><small>Never keeps the LED lit. Shorter saves battery. Apply to send.</small></span>
               <div class="segmented" id="sleep-seg"></div></div>
             <div class="srow"><span class="sicon"><svg class="ic"><use href="#i-reset"/></svg></span>
-              <span class="stext"><b>Reset profile on mouse</b><small>Puts the active onboard profile back to factory settings.</small></span>
+              <span class="stext"><b>Reset onboard profile</b><small>Puts the active onboard profile back to factory settings.</small></span>
               <button class="btn danger" id="profile-reset">Reset…</button></div>
           </div>
         </div>
@@ -442,17 +448,15 @@
 
 <footer class="dock-row">
   <div class="dock" id="dock">
-    <span class="save-indicator" aria-hidden="true"></span>
-    <div class="save-copy"><span class="status" id="status" role="status" aria-live="polite"></span><small id="save-detail"></small></div>
+    <span class="status" id="status" role="status" aria-live="polite"></span>
     <span class="grow"></span>
-    <button class="btn quiet sm" id="review-changes">Review changes</button>
-    <button class="btn apply primary" id="apply" hidden>Save to mouse</button>
+    <button class="btn apply primary" id="apply" hidden>Apply</button>
   </div>
 </footer>
 
 <div id="scrim" hidden></div>
-<div id="modal" class="modal glass" hidden></div>
-<div id="dialog" class="modal glass dialog" hidden></div>
+<div id="modal" class="modal glass" role="dialog" aria-modal="true" hidden></div>
+<div id="dialog" class="modal glass dialog" role="dialog" aria-modal="true" hidden></div>
 
 <script src="app.js"></script>
 </body>

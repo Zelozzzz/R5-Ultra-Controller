@@ -19,7 +19,7 @@ from .effects import EFFECTS
 
 WEB = Path(__file__).resolve().parent / "web"
 DOCS = winapp.resource_root() / "docs"
-ASSET_VERSION = "6"     # bump when the rendered pictures change
+ASSET_VERSION = "8"     # bump when the rendered pictures change
 MOUSE_SIZE = (520, 840)
 
 
@@ -55,6 +55,8 @@ class Site:
         (self.root / "index.html").write_text(page, encoding="utf-8")
         self._lock = threading.Lock()
         self._mouse: dict | None = None
+        self._mouse_model = None
+        self._mouse_version = None                # device_image.version the art was made from
 
     def index(self) -> str:
         return str(self.root / "index.html")
@@ -82,7 +84,11 @@ class Site:
         return made
 
     def mouse(self, refresh: bool = False) -> dict | None:
+        from . import device_image
         with self._lock:
+            if self._mouse_model is not device_image.current or self._mouse_version != device_image.version:
+                refresh, self._mouse_model = True, device_image.current
+                self._mouse_version = device_image.version     # a new picture came in (download or import)
             if self._mouse is not None and not refresh:
                 return self._mouse
             from .art import real_photo, forget_photo
@@ -92,12 +98,13 @@ class Site:
             if photo is None:
                 self._mouse = None
                 return None
-            digest = hashlib.sha1(photo.tobytes()).hexdigest()[:8]
+            spot = device_image.current.led_spot
+            digest = hashlib.sha1(photo.tobytes() + repr(spot).encode()).hexdigest()[:8]
             stamp = f"{ASSET_VERSION}-{photo.size[0]}x{photo.size[1]}-{digest}"
             meta = self.root / f"mouse-{stamp}.json"
             if not meta.exists():
                 from .scenery import mouse_layers
-                layers = mouse_layers(photo, *MOUSE_SIZE)
+                layers = mouse_layers(photo, *MOUSE_SIZE, led_spot=spot)
                 for part in ("base", "glow", "core"):
                     layers[part].save(self.root / f"mouse-{stamp}-{part}.png", optimize=True)
                 meta.write_text(json.dumps({"box": layers["box"]}))
@@ -178,6 +185,14 @@ class Api:
         self._c.set_active_stage(stage)
 
     @_safe
+    def set_stage_count(self, count):
+        self._c.set_stage_count(count)
+
+    @_safe
+    def set_color_mode(self, mode):
+        self._c.set_color_mode(mode)
+
+    @_safe
     def set_profile(self, n):
         self._c.set_profile(n)
 
@@ -246,6 +261,10 @@ class Api:
         self._c.read_macro_slot(slot)
 
     @_safe
+    def clear_macro_slot(self, slot):
+        self._c.clear_macro_slot(slot)
+
+    @_safe
     def set_unsaved(self, unsaved):
         self._ui.unsaved_macro = bool(unsaved)
 
@@ -263,14 +282,14 @@ class Api:
 
     @_safe
     def import_profile(self):
-        path = self._ui.open_file("Import profile", ("Dorsal profile (*.json)",))
+        path = self._ui.open_file("Import setup", ("Dorsal setup (*.json)",))
         if path:
             self._c.import_profile(path)
         return bool(path)
 
     @_safe
     def export_profile(self, item_id):
-        path = self._ui.save_file("Export profile", "dorsal-profile.json", ("JSON (*.json)",))
+        path = self._ui.save_file("Export setup", "dorsal-setup.json", ("JSON (*.json)",))
         if path:
             self._c.export_profile(item_id, path)
         return bool(path)
@@ -339,15 +358,19 @@ class Api:
 
     @_safe
     def firmware_choose(self):
-        path = self._ui.open_file("Choose the official software",
-                                  ("Official installer or app.asar (*.exe;*.asar;*.hex)",))
+        model = self._c.fw["model"]
+        if model.firmware_from_hub:
+            path = self._ui.open_file(f"Choose the {model.name} firmware", (f"{model.brand} firmware (*.hex)",))
+        else:
+            path = self._ui.open_file("Choose the official software",
+                                      ("Official installer or app.asar (*.exe;*.asar;*.hex)",))
         if path:
             self._c.firmware_prepare(path)
         return bool(path)
 
     @_safe
-    def firmware_install(self, restore=False):
-        self._c.firmware_install(bool(restore))
+    def firmware_install(self, restore=False, expect=None):
+        self._c.firmware_install(bool(restore), expect)
 
     @_safe
     def set_startup(self, enabled):
@@ -366,6 +389,10 @@ class Api:
         self._c.set_check_updates(enabled)
 
     @_safe
+    def set_download_photos(self, enabled):
+        self._c.set_download_photos(enabled)
+
+    @_safe
     def open_update(self):
         import webbrowser
         webbrowser.open(self._c.update.get("url") or f"{REPO_URL}/releases/latest")
@@ -377,9 +404,23 @@ class Api:
         return self._ui.site.backdrop(self._c.theme)
 
     @_safe
+    def mouse_art(self):
+        return self._ui.site.mouse()
+
+    @_safe
+    def mouse_choices(self):
+        return self._c.mouse_choices()
+
+    @_safe
+    def choose_model(self, key):
+        self._c.choose_model(key)
+        return self._ui.site.mouse()
+
+    @_safe
     def import_mouse_image(self):
-        path = self._ui.open_file("Import the original R5 Ultra mouse image",
-                                  ("R5 Ultra image or original software (*.png;*.asar;*.exe)",))
+        name = self._c.model.name
+        path = self._ui.open_file(f"Import the original {name} mouse image",
+                                  (f"{name} image or original software (*.png;*.asar;*.exe)",))
         if not path:
             return None
         from . import device_image

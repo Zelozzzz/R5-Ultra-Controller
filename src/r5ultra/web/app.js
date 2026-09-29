@@ -10,9 +10,10 @@ const PRESET_COLORS = ["#FF0000", "#FF6A00", "#FFD000", "#00FF66", "#00D5FF", "#
 const BUTTON_NAMES = { 1: "Left click", 2: "Right click", 3: "Wheel click", 4: "Back", 5: "Forward" };
 // where each button's line ends on the mouse (fractions of the outline) and which side the label goes
 const CALLOUTS = [[1, "left", .30, .10], [3, "left", .50, .21], [5, "left", .02, .37],
-                  [4, "left", .02, .48], [2, "right", .70, .10], [0, "right", .97, .56]];
+                  [4, "left", .02, .48], [2, "right", .70, .10]];
 
 let S = null;               // the latest state from Python
+const mouseName = () => (S && S.model ? S.model.name : "mouse");
 let A = null;               // assets: backdrop, mouse layers, probe names, step kinds
 let tab = "home";
 const ui = {
@@ -59,17 +60,41 @@ function toast(text, tone = "") {
   setTimeout(() => t.remove(), 3800);
 }
 
+// the windows over the page (#modal and #dialog). whatever's under the top one goes inert so
+// Tab stays inside it, and focus goes back to where it was when it closes
+const layers = [];
+function layer(el, on, focusEl) {
+  const i = layers.findIndex((l) => l.el === el), top = layers[layers.length - 1];
+  let back = null;
+  if (on && i < 0 && top && top.el.id === "dialog") {
+    // the dialog always draws on top, so a window opening while it's up goes under it and gets focus after
+    layers.splice(-1, 0, { el, back: top.back });
+    top.back = focusEl; focusEl = null;
+  } else if (on && i < 0) layers.push({ el, back: document.activeElement });
+  else if (!on) {
+    if (i < 0) return;
+    back = layers.splice(i, 1)[0].back;
+    if (i < layers.length) { layers[i].back = back; back = null; }   // closed from under another window, that one takes over
+  }
+  if (on) el.setAttribute("aria-label", $("h2", el)?.textContent || "");
+  el.hidden = !on;
+  layers.forEach((l, j) => l.el.inert = j < layers.length - 1);
+  $$("body > header, body > nav, body > main, body > footer").forEach((x) => x.inert = layers.length > 0);
+  $("#scrim").hidden = !layers.length;
+  // focus last, focusing something that's still inert does nothing
+  if (on) focusEl?.focus(); else back?.focus?.();
+}
+
 function dialog({ title, text = "", input = null, buttons = [{ label: "OK", value: true, primary: true }], html = "" }) {
   return new Promise((resolve) => {
-    const m = $("#dialog"), scrim = $("#scrim");
+    const m = $("#dialog");
     m.innerHTML = `<h2>${esc(title)}</h2>${text ? `<p>${esc(text).replace(/\n/g, "<br>")}</p>` : ""}${html}
       ${input !== null ? `<input class="input" id="dlg-input" spellcheck="false" value="${esc(input)}">` : ""}
       <div class="buttons">${buttons.map((b, i) => `<button class="btn ${b.primary ? "primary" : ""}" data-i="${i}">${esc(b.label)}</button>`).join("")}</div>`;
-    m.hidden = scrim.hidden = false;
+    layer(m, true);
     const field = $("#dlg-input", m);
     const done = (value) => {
-      m.hidden = true; m.innerHTML = "";
-      scrim.hidden = $("#modal").hidden;          // keep the scrim if the firmware window is still open
+      m.innerHTML = ""; layer(m, false);
       document.removeEventListener("keydown", key, true); resolve(value);
     };
     const key = (e) => {
@@ -192,12 +217,12 @@ function layoutCallouts(host, art, onClick, selected = null, withLabels = false)
   for (const [code, side, fx, fy] of CALLOUTS) {
     const px = ar.left - hr.left + (box[0] + (box[2] - box[0]) * fx) * ar.width;
     const py = ar.top - hr.top + (box[1] + (box[3] - box[1]) * fy) * ar.height;
-    const b = code ? S.bindings.find((x) => x.code === code) : null;
-    const label = code === 0 ? "DPI" : b && b.label ? b.label : BUTTON_NAMES[code];
+    const b = S.bindings.find((x) => x.code === code);
+    const label = b && b.label ? b.label : BUTTON_NAMES[code];
     const remapped = b && b.label && b.label !== BUTTON_NAMES[code];
     const x0 = side === "left" ? pad : px, x1 = side === "left" ? px : hr.width - pad;
     const cls = `callout ${remapped ? "remapped" : ""} ${selected === code ? "on" : ""}`;
-    const name = withLabels && code ? BUTTON_NAMES[code] + (remapped ? ` → ${label}` : "") : label;
+    const name = withLabels ? BUTTON_NAMES[code] + (remapped ? ` → ${label}` : "") : label;
     const sub = "";
     html += `<div class="${cls}" data-code="${code}" style="left:${x0}px;top:${py - 30}px;width:${x1 - x0}px;height:34px">
       <div class="line" style="left:0;right:0;top:30px"></div>
@@ -207,18 +232,17 @@ function layoutCallouts(host, art, onClick, selected = null, withLabels = false)
   host.innerHTML = html;
   $$(".callout", host).forEach((c) => {
     const code = +c.dataset.code;
-    if (code) {
-      c.onclick = () => onClick(code);
-      c.tabIndex = 0; c.setAttribute("role", "button");
-      c.setAttribute("aria-label", `Assign ${BUTTON_NAMES[code]}`);
-      c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(code); } };
-    } else c.style.pointerEvents = "none";
+    c.onclick = () => onClick(code);
+    c.tabIndex = 0; c.setAttribute("role", "button");
+    c.setAttribute("aria-label", `Assign ${BUTTON_NAMES[code]}`);
+    c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(code); } };
   });
 }
 
 // rendering
 
 function renderHeader() {
+  $("#header-model").textContent = mouseName().toUpperCase();
   const dot = $("#link-dot"), text = $("#link-text");
   dot.className = "dot";
   if (!S.connected) { dot.classList.add("err"); text.textContent = "Not connected"; }
@@ -237,6 +261,7 @@ function renderHeader() {
   }
   $("#profile-label").textContent = `Onboard ${S.profile}`;
   $("#profile-btn").disabled = S.busy.some(b => ["apply", "flash", "studio", "read"].includes(b));
+  $("#profile-btn").hidden = !(S.model && S.model.onboard);     // one set of settings on the other mice
 }
 
 function renderHome() {
@@ -246,6 +271,8 @@ function renderHome() {
   setRange($("#brightness"), S.brightness);
   $("#bright-text").textContent = `${Math.round(S.brightness / 255 * 100)}%`;
 
+  const perStage = !S.effect && S.color_mode === "stages";
+  $("#per-stage").checked = S.color_mode === "stages";
   const fxKey = JSON.stringify([S.effects.map((e) => e.key), S.effect]);
   const fx = $("#effects");
   if (fx.dataset.key !== fxKey) {
@@ -258,8 +285,23 @@ function renderHome() {
       else if (S.effect !== key) call("set_effect", key);
     });
   }
+  // per stage: one swatch per stage in use, clicking one switches the mouse to it so the picker edits it
+  const sc = $("#stage-colors");
+  sc.hidden = !perStage;
+  const scKey = JSON.stringify([S.stage_colors, S.active_stage, S.stage_count]);
+  if (perStage && sc.dataset.key !== scKey) {
+    sc.dataset.key = scKey;
+    sc.innerHTML = S.stage_colors.slice(0, S.stage_count).map((c, i) => {
+      const what = `Stage ${i + 1} · ${S.stage_dpis[i].toLocaleString()} DPI`;
+      return `<button class="${i + 1 === S.active_stage ? "on" : ""}" style="--c:${esc(c)}" data-i="${i}"
+        title="${what}" aria-label="${what}, ${esc(c)}">${i + 1}</button>`;
+    }).join("");
+    $$("button", sc).forEach((b) => b.onclick = () => goStage(+b.dataset.i));
+  }
   $("#rainbow-row").hidden = S.effect !== "rainbow";
-  $("#lighting-storage").textContent = S.effect ? "Animated effect · keep Dorsal running in the tray." : "Static color · runs without Dorsal.";
+  const ls = $("#lighting-storage");
+  ls.textContent = S.effect ? "Keep Dorsal running" : "Runs without Dorsal";
+  ls.title = S.effect ? "Animated effects are drawn by Dorsal, so keep it running in the tray." : "Saved on the mouse, works without Dorsal.";
   if (S.effect === "rainbow") {
     setRange($("#rainbow-speed"), Math.round((30 - S.rainbow.speed) / 29.5 * 1000));
     $("#rainbow-text").textContent = `${S.rainbow.speed.toFixed(1)} s per cycle`;
@@ -267,21 +309,31 @@ function renderHome() {
 
   $$(".quick-toggle").forEach((b) => b.classList.toggle("on", !!S[b.dataset.setting]));
   $("#deb-text").textContent = `${S.debounce} ms`;
+  $("#deb-minus").disabled = S.debounce <= (S.debounce_min ?? 0);
+  $("#deb-plus").disabled = S.debounce >= (S.debounce_max ?? 20);
+  const missing = S.unsupported || [];                         // settings this mouse doesn't have
+  $("#lod").closest(".section").hidden = missing.includes("lod");
+  $$('[data-setting="motion_sync"]').forEach((b) => { b.hidden = missing.includes("motion_sync"); });
 
   // DPI: the stage you're editing is the one the mouse is on
   if (S.active_stage !== ui.lastActive) { ui.lastActive = S.active_stage; ui.stage = S.active_stage - 1; }
-  ui.stage = Math.max(0, Math.min(5, ui.stage));
+  const count = S.stage_count || S.stage_dpis.length;
+  ui.stage = Math.max(0, Math.min(count - 1, ui.stage));
   const dv = $("#dpi-value");
   if (document.activeElement !== dv) dv.value = S.stage_dpis[ui.stage].toLocaleString();
-  $("#dpi-stage-of").textContent = `Stage ${ui.stage + 1} of ${S.stage_dpis.length}` + (ui.stage + 1 === S.active_stage ? " · in use" : "");
+  $("#dpi-stage-of").textContent = `Stage ${ui.stage + 1} of ${count}` + (ui.stage + 1 === S.active_stage ? " · in use" : "");
+  $("#stage-count").textContent = count === 1 ? "1 stage" : `${count} stages`;
+  $("#stage-count-label").textContent = S.model && S.model.dpi_button === false ? "DPI cycle goes through" : "DPI button goes through";
+  $("#stage-less").disabled = count <= 1;
+  $("#stage-more").disabled = count >= (S.stages_max || S.stage_dpis.length);
   $("#dpi-min").textContent = S.dpi_min.toLocaleString();
   $("#dpi-max").textContent = S.dpi_max.toLocaleString();
   setRange($("#dpi"), Math.round(dpiFrac(S.stage_dpis[ui.stage]) * 1000));
   const stages = $("#stages");
-  const stKey = JSON.stringify([S.stage_dpis, S.active_stage, ui.stage]);
+  const stKey = JSON.stringify([S.stage_dpis, S.active_stage, ui.stage, count]);
   if (stages.dataset.key !== stKey) {
     stages.dataset.key = stKey;
-    stages.innerHTML = S.stage_dpis.map((v, i) => `<button class="stage-row ${i === ui.stage ? "on" : ""} ${i + 1 === S.active_stage ? "live" : ""}"
+    stages.innerHTML = S.stage_dpis.slice(0, count).map((v, i) => `<button class="stage-row ${i === ui.stage ? "on" : ""} ${i + 1 === S.active_stage ? "live" : ""}"
         data-i="${i}" title="Click to switch to it, double-click to type a value">
         <span class="stage-n">${i + 1}</span><span class="stage-bar"><i style="width:${(dpiFrac(v) * 100).toFixed(1)}%"></i></span>
         <b>${v.toLocaleString()}</b></button>`).join("");
@@ -293,11 +345,13 @@ function renderHome() {
 
   $("#polling").dataset.setting = "polling";
   notched($("#polling"), S.polling_values, S.polling, (v) => call("set_setting", "polling", v));
-  $("#polling-note").textContent = S.link_type === "USB cable" ? "Hz · cable max 1000" : "Hz";
+  const topHz = Math.max(...S.polling_values.map(Number));      // what this mouse does on this link
+  $("#polling-note").textContent = S.link_type === "USB cable" && topHz <= 1000 ? "Hz · cable max 1000" : "Hz";
   $("#lod").dataset.setting = "lod";
   notched($("#lod"), S.lod_values, S.lod, (v) => call("set_setting", "lod", v));
 
   const mode = $("#competitive"), busy = S.busy.includes("competitive");
+  mode.hidden = S.competitive_supported === false;       // the R8, older R6 firmware and 3395 mice don't have it
   mode.classList.toggle("enabled", S.competitive === true && !busy);
   mode.classList.toggle("unknown", S.competitive == null || busy);      // not read yet: neither on nor off
   mode.disabled = !S.connected || S.busy.some((b) => ["competitive", "flash", "apply", "studio"].includes(b));
@@ -309,7 +363,7 @@ function renderHome() {
 
 // clicking a stage switches the mouse to it
 function goStage(i) {
-  ui.stage = Math.max(0, Math.min(5, i));
+  ui.stage = Math.max(0, Math.min((S.stage_count || 6) - 1, i));
   ui.lastActive = ui.stage + 1;
   call("set_active_stage", ui.stage + 1);
   renderHome();
@@ -333,7 +387,6 @@ function wireDpiField() {
 function placeCallouts() {
   if (tab === "home") layoutCallouts($("#home-callouts"), $("#home-art"), (code) => { ui.button = code; showTab("buttons"); });
   if (tab === "buttons") layoutCallouts($("#btn-callouts"), $("#btn-callouts").previousElementSibling, (code) => {
-    if (!BUTTON_NAMES[code]) { toast("The DPI button always switches DPI."); return; }
     ui.button = code; renderButtons(true);
   }, ui.button, true);
 }
@@ -343,12 +396,9 @@ function renderDock() {
   // the bar only shows up when something hasn't been sent to the mouse yet
   const applying = S.busy.includes("apply");
   $(".dock-row").hidden = !S.dirty && !applying;
-  const pending = S.pending_changes || [];
   const result = S.apply_result;
-  $("#status").textContent = applying ? "Saving and verifying…" : result && result.tone !== "ok" ? result.title : `Changes to onboard profile ${S.profile}`;
-  $("#save-detail").textContent = applying ? "Keep the mouse connected until verification finishes." : result && result.tone !== "ok" ? result.text : pending.join(" · ") || "Loaded setup is ready to save.";
-  $("#save-detail").title = $("#save-detail").textContent;
-  $("#review-changes").disabled = applying;
+  // a failed save already pops a toast, the bar just keeps its title
+  $("#status").textContent = applying ? "" : result && result.tone !== "ok" ? result.title : "Not applied";
   if (result && result.id !== ui.applyResultSeen) {
     ui.applyResultSeen = result.id;
     toast(`${result.title}. ${result.text}`, result.tone);
@@ -362,7 +412,7 @@ function renderDock() {
   $("#dock-read").disabled = !S.connected || S.busy.includes("read");
   const btn = $("#apply");
   btn.hidden = !S.dirty && !applying;
-  btn.textContent = applying ? "Verifying…" : "Save to mouse";
+  btn.textContent = applying ? "Applying…" : "Apply";
   btn.disabled = !S.connected || S.busy.some(b => ["apply", "flash", "studio", "read", "health", "input-start"].includes(b));
 }
 
@@ -425,7 +475,6 @@ function renderButtons(force = false) {
   if (ui.bindingFor !== editKey) { ui.bindingFor = editKey; ui.draft = draftFrom(b); force = true; }
   const d = ui.draft, locked = code === 1;
   $("#assign-button").textContent = BUTTON_NAMES[code];
-  $("#assign-profile").textContent = S.profile;
   $("#assign-now").textContent = b && b.label ? `now: ${b.label}` : "";
 
   const cats = $("#assign-cats");
@@ -444,12 +493,13 @@ function renderButtons(force = false) {
 
   const busy = S.busy.includes("studio");
   const changed = JSON.stringify(d) !== JSON.stringify(draftFrom(b));
-  $("#assign-save").disabled = busy || locked || !S.connected;
+  // nothing to save when the draft is what the mouse already has (unless it hasn't been read yet)
+  $("#assign-save").disabled = busy || locked || !S.connected || (!changed && !!(b && b.label));
   $("#assign-save").textContent = busy ? "Saving…" : "Save to mouse";
   $("#assign-cancel").disabled = !changed;
   $("#binding-read").disabled = busy || !S.connected;
   $("#assign-note").textContent = locked ? "Left click stays left click, so you can't lock yourself out."
-    : !S.connected ? "Plug in the mouse or dongle to save." : "";
+    : !S.connected ? "Plug in the mouse or dongle to save." : `Saves to onboard profile ${S.profile}.`;
   placeCallouts();
 }
 
@@ -470,9 +520,11 @@ function radio(value, label, on, hint = "") {
 
 function assignBody(d, locked) {
   const name = BUTTON_NAMES[ui.button];
-  if (locked) return `<p class="assign-empty">Pick another button on the mouse.</p>`;
-  if (d.cat === "default") return `<p class="assign-empty">${esc(name)} goes back to being ${esc(name.toLowerCase())}.</p>`;
-  if (d.cat === "disable") return `<p class="assign-empty">${esc(name)} won't do anything. Handy for a button you keep hitting by accident.</p>`;
+  const box = (icon, title, line = "") => `<div class="empty big"><span class="empty-icon"><svg class="ic"><use href="#${icon}"/></svg></span>
+    <b>${title}</b>${line ? `<span>${line}</span>` : ""}</div>`;
+  if (locked) return box("i-mouse", "Pick another button on the mouse");
+  if (d.cat === "default") return box("i-reset", `${esc(name)} goes back to being ${esc(name.toLowerCase())}`, "Pick something on the left to change it.");
+  if (d.cat === "disable") return box("i-x", `${esc(name)} won't do anything`, "Handy for a button you keep hitting by accident.");
   if (d.cat === "keyboard") return `<label class="field-label">Press the keys you want</label>
     <input class="input key-capture" id="assign-keys" value="${esc(d.shortcut)}" placeholder="Click here, then press a key or combo" spellcheck="false" readonly>
     <p class="note">One key, plus Ctrl, Shift, Alt or Win if you want. Like Ctrl+Shift+S, Alt+Tab or F6.</p>`;
@@ -485,7 +537,7 @@ function assignBody(d, locked) {
       ${S.macros.length ? "" : `<p class="note">No macros yet. <a href="#" id="assign-make">Make one on the Macros tab.</a></p>`}
       <label class="field-label">Onboard slot</label>
       <div class="segmented slot-seg" id="assign-slot">${[1, 2, 3].map((n) => `<button class="${d.slot === n ? "on" : ""}" data-val="${n}">Slot ${n}</button>`).join("")}</div>
-      <p class="note">The mouse keeps 3 macros, shared by every profile.${d.macroId ? ` Saving puts this one in slot ${d.slot}.` : ""}</p>
+      <p class="note">The mouse keeps 3 macros, shared by every onboard profile.${d.macroId ? ` Saving puts this one in slot ${d.slot}.` : ""}</p>
       <label class="field-label">Playback option</label>
       <div class="opts" id="assign-playback">${PLAYBACK.map(([v, l]) => radio(v, l, d.playback === v)).join("")}</div>
       <div class="row gap repeat-row" ${d.playback === "times" ? "" : "hidden"}>
@@ -536,6 +588,7 @@ async function saveAssignment() {
 
 // macros page
 
+const LIBRARY_BROKEN = "Couldn't open your saved macros and setups, so nothing new can be saved here. The file was left as it was.";
 const macroDoc = () => JSON.stringify({ name: $("#macro-name").value, steps: ui.macro.steps });
 function macroDirty() {
   const m = ui.macro;
@@ -557,13 +610,14 @@ function loadMacro(doc, id = null) {
 function renderMacroLibrary() {
   const sel = $("#macro-library");
   const query = $("#macro-search").value.trim().toLowerCase();
-  const key = JSON.stringify([S.macros.map((m) => [m.id, m.name, m.steps.length]), ui.macro.id, query]);
+  const key = JSON.stringify([S.macros.map((m) => [m.id, m.name, m.steps.length]), ui.macro.id, query, S.library_error]);
   if (sel.dataset.key === key) return;
   sel.dataset.key = key;
   sel.innerHTML = `<option value="">New macro</option>` + S.macros.map((m, i) => `<option value="${esc(m.id)}">${i + 1}. ${esc(m.name)}</option>`).join("");
   sel.value = ui.macro.id || "";
+  $("#macro-import").disabled = !!S.library_error;
   const matches = S.macros.filter((m) => m.name.toLowerCase().includes(query));
-  $("#macro-library-list").innerHTML = matches.length ? matches.map((m) =>
+  $("#macro-library-list").innerHTML = S.library_error ? `<p class="empty c-warn">${LIBRARY_BROKEN}</p>` : matches.length ? matches.map((m) =>
     `<button class="macro-library-item ${m.id === ui.macro.id ? "on" : ""}" data-id="${esc(m.id)}" aria-pressed="${m.id === ui.macro.id}"><span><b>${esc(m.name)}</b><small>${m.steps.length} step${m.steps.length === 1 ? "" : "s"}</small></span></button>`).join("") :
     `<p class="empty">${query ? "No matching macros." : "Your library starts here.<br>Create a macro or import one."}</p>`;
   $$(".macro-library-item").forEach((b) => b.onclick = () => {
@@ -575,31 +629,47 @@ async function renderMacro() {
   let elapsed = 0;
   const rows = m.steps.map((s, i) => {
     if (s.kind === "Delay") elapsed += +s.value;
-    return `<div class="tr ${i === m.sel ? "on" : ""}" data-i="${i}"><span class="muted">${String(i + 1).padStart(2, "0")}</span>
+    // only one row is in the tab order, the arrow keys move between them
+    return `<div class="tr ${i === m.sel ? "on" : ""}" data-i="${i}" role="option" aria-selected="${i === m.sel}" tabindex="${i === (m.sel ?? 0) ? 0 : -1}"><span class="muted">${String(i + 1).padStart(2, "0")}</span>
       <span>${esc(s.kind)}</span><span>${esc(s.kind === "Delay" ? `${s.value} ms` : s.value)}</span><span class="muted">${elapsed.toLocaleString()} ms</span></div>`;
   });
+  const hadFocus = table.contains(document.activeElement);
   table.innerHTML = `<div class="tr th"><span>#</span><span>Action</span><span>Value</span><span>Elapsed</span></div>` +
-    (rows.length ? rows.join("") : `<div class="empty big"><span class="empty-icon"><svg class="ic"><use href="#i-kbd"/></svg></span>
+    (rows.length ? `<div role="listbox" aria-label="Macro steps">${rows.join("")}</div>` : `<div class="empty big"><span class="empty-icon"><svg class="ic"><use href="#i-kbd"/></svg></span>
       <b>No steps yet</b><span>Record what you type, or add a shortcut like Ctrl+C.</span>
       <span class="empty-actions"><button class="btn primary sm" data-proxy="macro-record">Record keys</button>
       <button class="btn sm" data-proxy="macro-shortcut">Add shortcut</button></span></div>`);
   $$("[data-proxy]", table).forEach((b) => b.onclick = () => $(`#${b.dataset.proxy}`).click());
-  $$(".tr[data-i]", table).forEach((r) => r.onclick = () => {
-    m.sel = +r.dataset.i;
-    const s = m.steps[m.sel];
-    $("#step-kind").value = s.kind; $("#step-value").value = s.value;
-    renderMacro();
-  });
+  $$(".tr[data-i]", table).forEach((r) => r.onclick = () => pickStep(+r.dataset.i));
+  // the rows were just rebuilt, so put the focus back if it was in the table
+  if (hadFocus && m.sel !== null) table.querySelector(`.tr[data-i="${m.sel}"]`)?.focus();
   if (m.sel !== null) table.querySelector(`.tr[data-i="${m.sel}"]`)?.scrollIntoView({ block: "nearest" });
   $("#macro-stats").textContent = `${m.steps.length} / 256 steps · ${elapsed.toLocaleString()} ms`;
   $("#macro-stats").title = "Sequence length and total programmed delay. Playback timing also depends on the mouse.";
-  $("#macro-save").textContent = macroDirty() ? "Save changes" : "Saved to library";
-  $("#macro-save").disabled = !macroDirty() || !m.steps.length;
+  macroButtons();
   $("#macro-upload").title = "Stores this sequence in a shared onboard slot. Assign it to a button in Buttons.";
   call("set_unsaved", macroDirty());
   const check = await call("macro_check", m.steps);
   const fb = $("#macro-feedback");
   if (check) { fb.textContent = check.text; fb.className = `note ${check.ok ? "c-ok" : ""}`; }
+}
+function pickStep(i) {
+  const m = ui.macro;
+  m.sel = i;
+  const s = m.steps[i];
+  $("#step-kind").value = s.kind; $("#step-value").value = s.value;
+  renderMacro();
+}
+// buttons that can't do anything right now are greyed out instead of silently doing nothing
+function macroButtons() {
+  const m = ui.macro, dirty = macroDirty(), none = m.sel === null, broken = !!S.library_error;
+  $("#macro-save").textContent = broken ? "Can't save" : !m.id ? "Save to library" : dirty ? "Save changes" : "Saved to library";
+  $("#macro-save").disabled = broken || !dirty || !m.steps.length;
+  $("#step-update").disabled = $("#step-remove").disabled = none;
+  $("#step-up").disabled = none || m.sel === 0;
+  $("#step-down").disabled = none || m.sel >= m.steps.length - 1;
+  $("#macro-upload").disabled = $("#macro-export").disabled = !m.steps.length;
+  $("#macro-delete").disabled = !m.id;
 }
 async function editorStep() {
   return attempt("macro_step", $("#step-kind").value, $("#step-value").value);
@@ -624,25 +694,31 @@ function recordMacro() {
   return new Promise((resolve) => {
     const events = [];
     let active = false;
-    const m = $("#modal"), scrim = $("#scrim");
+    const held = new Set();      // keys pressed since Start, so the Enter that pressed Start doesn't record its keyup
+    const m = $("#modal");
     m.innerHTML = `<h2>Record a key sequence</h2>
       <p>Press Start, then type. Timing is recorded. F8 stops and adds the keys; Escape cancels. Keys typed in other apps are never captured.</p>
       <div class="record-status" id="rec-status">Ready</div>
       <div class="buttons"><button class="btn" id="rec-cancel">Cancel</button><button class="btn" id="rec-stop">Stop &amp; add</button>
       <button class="btn primary" id="rec-start"><svg class="ic sm rec"><use href="#i-rec"/></svg>Start</button></div>`;
-    m.hidden = scrim.hidden = false;
+    layer(m, true, $("#rec-start"));
     const status = $("#rec-status");
     const finish = (keep) => {
       document.removeEventListener("keydown", down, true);
       document.removeEventListener("keyup", up, true);
-      m.hidden = scrim.hidden = true; m.innerHTML = "";
+      m.innerHTML = ""; layer(m, false);
       resolve(keep ? events : null);
     };
     const feed = (e, isDown) => {
-      e.preventDefault(); e.stopPropagation();
+      e.stopPropagation();
+      // until Start is pressed, Tab, Enter and Space still work on the buttons
+      if (!active && e.code !== "Escape" && e.code !== "F8") return;
+      e.preventDefault();
       if (e.code === "Escape") { if (isDown) finish(false); return; }
       if (e.code === "F8") { if (isDown) finish(true); return; }
       if (!active || e.repeat) return;
+      if (isDown) held.add(e.code);
+      else if (!held.delete(e.code)) return;
       const name = keyName(e.code);
       if (!name) return;
       events.push([name, isDown, e.timeStamp / 1000]);
@@ -661,44 +737,60 @@ function recordMacro() {
 
 const pollText = (v) => `${String(v).replace(" Hz", "")} Hz`;
 
+const setupSwatch = (c) => `<span class="setup-color" style="background:${esc(c)}"></span>`;
+// the list swatch: first stage's color when every stage has its own
+const setupColor = (p) => p.color_mode === "stages" && p.stage_colors && p.stage_colors.length ? p.stage_colors[0] : p.color;
+
 function setupFacts(p) {
-  return `<div class="setup-hero"><span class="setup-color big" style="background:${esc(p.color)}"></span>${dpiBars(p.dpis, true)}</div>
+  const n = p.count || p.dpis.length;
+  const lacks = new Set(S.unsupported || []);        // what this mouse doesn't have isn't shown, whatever the setup carries
+  const color = p.color_mode === "stages"
+    ? `${(p.stage_colors || []).slice(0, n).map(setupSwatch).join("")} One per DPI stage`
+    : `${setupSwatch(p.color)} ${esc(p.color)}`;
+  return `<div class="setup-facts"><div class="setup-hero">${dpiBars(p.dpis.slice(0, n), true)}</div>
     <dl class="stat-rows setup-rows">
-      <dt>DPI stages</dt><dd>${p.dpis.map((v) => v.toLocaleString()).join(" · ")}</dd>
+      <dt>DPI stages</dt><dd>${p.dpis.slice(0, n).map((v) => v.toLocaleString()).join(" · ")}</dd>
       <dt>Polling rate</dt><dd>${esc(pollText(p.polling))}</dd>
-      <dt>Lift-off</dt><dd>${esc(p.lod)}</dd>
-      <dt>Color</dt><dd class="mono">${esc(p.color)}</dd>
-    </dl>`;
+      ${lacks.has("lod") ? "" : `<dt>Lift-off</dt><dd>${esc(p.lod)}</dd>`}
+      <dt>Color</dt><dd>${color}</dd>
+      ${p.brightness != null ? `<dt>Brightness</dt><dd>${Math.round(p.brightness / 255 * 100)}%</dd>` : ""}
+      ${p.debounce != null ? `<dt>Debounce</dt><dd>${p.debounce} ms</dd>` : ""}
+      ${p.motion_sync != null && !lacks.has("motion_sync") ? `<dt>Motion Sync</dt><dd>${p.motion_sync ? "On" : "Off"}</dd>` : ""}
+    </dl></div>`;
 }
 
 function renderProfiles() {
   const sel = S.profiles.some((p) => p.id === ui.setupSel) ? ui.setupSel : null;
   ui.setupSel = sel;
   const list = $("#profile-cards");
-  const key = JSON.stringify([S.profiles, ui.loadedSetup, sel]);
+  const broken = !!S.library_error;
+  const key = JSON.stringify([S.profiles, ui.loadedSetup, sel, broken]);
   if (list.dataset.key !== key) {
     list.dataset.key = key;
     $("#profile-count").textContent = S.profiles.length || "";
-    list.innerHTML = `<button class="list-item new ${sel ? "" : "on"}" data-id="">
+    $("#profile-import").disabled = broken;
+    list.innerHTML = (broken ? `<p class="empty c-warn">${LIBRARY_BROKEN}</p>` : "") +
+      `<button class="list-item new ${sel ? "" : "on"}" data-id="">
         <span class="item-icon"><svg class="ic sm"><use href="#i-plus"/></svg></span>
         <span class="item-text"><b>Save current setup</b><small>What's on Home right now</small></span></button>` +
       S.profiles.map((p) => `<button class="list-item ${p.id === sel ? "on" : ""}" data-id="${esc(p.id)}">
-        <span class="setup-color" style="background:${esc(p.color)}"></span>
-        <span class="item-text"><b>${esc(p.name)}</b><small>${esc(pollText(p.polling))} · ${esc(p.lod)} lift-off</small></span>
+        ${setupSwatch(setupColor(p))}
+        <span class="item-text"><b>${esc(p.name)}</b><small>${esc(pollText(p.polling))}${(S.unsupported || []).includes("lod") ? "" : ` · ${esc(p.lod)} lift-off`}</small></span>
         ${p.id === ui.loadedSetup ? '<span class="badge on">loaded</span>' : ""}</button>`).join("");
     $$(".list-item", list).forEach((b) => b.onclick = () => { ui.setupSel = b.dataset.id || null; ui.renaming = null; renderProfiles(); });
   }
 
   const d = $("#setup-detail"), p = sel && S.profiles.find((x) => x.id === sel);
-  const dkey = JSON.stringify([sel, p, ui.loadedSetup, ui.renaming]);
+  const dkey = JSON.stringify([sel, p, ui.loadedSetup, ui.renaming, broken, S.unsupported]);
   if (d.dataset.key !== dkey) {
     d.dataset.key = dkey;
     if (!p) {
+      const off = broken ? "disabled" : "";
       d.innerHTML = `<div class="pane-head"><h3 class="pane-title">Save what's on Home</h3></div>
-        <div class="pane-body"><p class="sub">DPI stages, polling rate, lift-off, sensor options and lighting, saved on this PC.
+        <div class="pane-body"><p class="sub">DPI stages, polling rate, ${(S.unsupported || []).includes("lod") ? "" : "lift-off, "}sensor options and lighting, saved on this PC.
           Make one for each game and load it whenever you switch.</p><div id="setup-now"></div></div>
-        <div class="pane-foot"><input class="input grow" id="profile-name" placeholder="Name it, like Valorant or Desktop" maxlength="64" spellcheck="false">
-          <button class="btn primary" id="profile-save">Save setup</button></div>`;
+        <div class="pane-foot"><input class="input grow" id="profile-name" placeholder="Name it, like Valorant or Desktop" maxlength="64" spellcheck="false" ${off}>
+          <button class="btn primary" id="profile-save" ${off}>Save setup</button></div>`;
       $("#profile-save").onclick = saveSetup;
       $("#profile-name").onkeydown = (e) => { if (e.key === "Enter") saveSetup(); };
     } else {
@@ -741,7 +833,8 @@ function renderProfiles() {
       });
     }
   }
-  if (!p) setHtml($("#setup-now"), setupFacts({ color: S.color, dpis: S.stage_dpis, polling: S.polling, lod: S.lod }));
+  if (!p) setHtml($("#setup-now"), setupFacts({ color: S.color, color_mode: S.color_mode, stage_colors: S.stage_colors, count: S.stage_count,
+    dpis: S.stage_dpis, polling: S.polling, lod: S.lod, brightness: S.brightness, debounce: S.debounce, motion_sync: S.motion_sync }));
 }
 
 async function saveSetup() {
@@ -765,7 +858,7 @@ function wireViews(nav, views, key, onShow) {
   show(ui.views[key] || $("button", nav).dataset.view);
 }
 
-// the six DPI stages as a tiny bar chart (log scale like the slider)
+// the DPI stages as a tiny bar chart (log scale like the slider)
 function dpiBars(dpis, labels = false) {
   const lo = Math.log(100), hi = Math.log(Math.max(12800, ...dpis));
   return `<span class="dpi-bars ${labels ? "labeled" : ""}">` + dpis.map((v) => {
@@ -795,9 +888,11 @@ function renderDiagnostics() {
         q && q.p95 != null ? `p95 ${q.p95.toFixed(2)} ms · settings channel` : "Run a timed command test");
   setRo("battery", b && !b.asleep && b.percent != null ? `${b.percent}%` : "—",
         b && b.charging ? "device reports charging" : "latest device charge report");
-  setRo("firmware", d?.details?.["Mouse firmware"] || "—", "Version readback cannot identify the LED patch");
+  // the live value first, an old run can say "unknown"
+  const fw = S.firmware || d?.details?.["Mouse firmware"];
+  setRo("firmware", fw || "—", fw ? "Read from the mouse" : "Shows up once the mouse answers");
   setHtml($("#device-rows"), dl([
-    ["Interface", S.connected ? "R5 Ultra detected" : "Not found"],
+    ["Interface", S.connected ? `${mouseName()} detected` : "Not found"],
     ["Current connection", S.link_type || "—"],
     ["Tested profile", d ? String(d.profile) : "Not tested"],
     ...Object.entries(d?.details || {}),
@@ -806,7 +901,7 @@ function renderDiagnostics() {
   const findings = S.health || [];
   const failed = findings.filter(c => c.status === "fail").length;
   const warnings = findings.filter(c => c.status === "warn").length;
-  $("#diagnostic-title").textContent = S.busy.includes("health") ? "Inspecting your mouse…" : !d ? "Check your R5 Ultra" : d.stale ? "Run a fresh inspection" : failed ? "Inspection needs attention" : warnings ? "Inspection complete · review findings" : "Device checks passed";
+  $("#diagnostic-title").textContent = S.busy.includes("health") ? "Inspecting your mouse…" : !d ? `Check your ${mouseName()}` : d.stale ? "Run a fresh inspection" : failed ? "Inspection needs attention" : warnings ? "Inspection complete · review findings" : "Device checks passed";
   hb.disabled = S.busy.some(b => ["health", "flash", "apply", "studio", "link", "input-start"].includes(b));
   hb.textContent = S.busy.includes("health") ? "Reading device…" : d ? "Run again" : "Run diagnostics";
   $("#diagnostic-summary").textContent = S.busy.includes("health") ? "Reading settings and timing 30 commands. Lighting may pause briefly during the read burst."
@@ -821,8 +916,9 @@ function renderDiagnostics() {
   setHtml($("#readback-rows"), d?.settings?.length ? d.settings.map(r => `<tr><th scope="row">${esc(r.name)}</th><td>${esc(r.observed)}</td><td>${esc(r.editor)}</td><td><span class="result ${r.status}">${labels[r.status]}</span></td></tr>`).join("")
     : '<tr><td colspan="4" class="empty">Run diagnostics to read the configuration from your mouse.</td></tr>');
   const marks = { ok: "i-check", warn: "i-alert", fail: "i-x" };
-  setHtml($("#health-list"), S.health.map((c) => `<div class="check ${c.status}"><span class="mark"><svg class="ic sm"><use href="#${marks[c.status] || "i-alert"}"/></svg></span>
-    <div><b>${esc(c.title)}</b>${c.detail ? `<p>${esc(c.detail)}</p>` : ""}</div></div>`).join(""));
+  setHtml($("#health-list"), S.health.length ? S.health.map((c) => `<div class="check ${c.status}"><span class="mark"><svg class="ic sm"><use href="#${marks[c.status] || "i-alert"}"/></svg></span>
+    <div><b>${esc(c.title)}</b>${c.detail ? `<p>${esc(c.detail)}</p>` : ""}</div></div>`).join("")
+    : `<p class="note">${S.busy.includes("health") ? "Checking…" : "Nothing checked yet. Results show up here after a run."}</p>`);
 
   const r = S.link_test;
   const tone = r ? ({ good: "ok", ok: "warn" }[r.verdict] || "err") : "";
@@ -909,7 +1005,7 @@ function renderInput(v) {
   $(".capture-progress").setAttribute("aria-valuenow", String(Math.min(v.duration, v.elapsed)));
   $("#input-toggle").textContent = v.starting ? "Reading settings…" : v.running ? `Stop · ${Math.max(0, Math.ceil(v.duration - v.elapsed))} s left` : "Capture 15 seconds";
   $("#input-toggle").disabled = v.starting || (!v.running && (!S.connected || S.busy.some(b => ["health", "link", "flash", "apply", "studio"].includes(b))));
-  $("#input-hint").textContent = v.error ? v.error : v.hint ? v.hint : v.running ? (v.events ? `Listening · ${v.events.toLocaleString()} reports received` : "Listening… move the R5 Ultra.")
+  $("#input-hint").textContent = v.error ? v.error : v.hint ? v.hint : v.running ? (v.events ? `Listening · ${v.events.toLocaleString()} reports received` : `Listening… move the ${mouseName()}.`)
     : "Move the mouse in fast circles, then click each button.";
   const p = v.polling;
   const tp = $("#tile-polling");
@@ -978,6 +1074,7 @@ function renderSettings() {
   $$("#theme-seg button").forEach((b) => b.classList.toggle("on", b.dataset.theme === S.settings.theme));
   $("#set-angle").checked = S.angle_snap;
   $("#set-updates").checked = S.settings.check_updates;
+  $("#set-photos").checked = S.settings.download_photos;
   const up = S.update || {};
   $("#update-text").textContent = {
     checking: "Checking GitHub…",
@@ -991,11 +1088,21 @@ function renderSettings() {
   $("#update-btn").disabled = up.state === "checking";
   setHtml($("#sleep-seg"), S.sleep_choices.map((m) =>
     `<button data-min="${m}" class="${m === S.sleep_min ? "on" : ""}">${m ? `${m} min` : "Never"}</button>`).join(""));
+  $("#settings-model").textContent = `${(S.model && S.model.brand) || "Attack Shark"} ${mouseName()}`;
+  $("#sleep-seg").closest(".srow").hidden = !S.sleep_choices.length;               // some mice can't have it set
+  $("#profile-reset").closest(".srow").hidden = !(S.model && S.model.onboard);
+  const fwOk = !S.model || S.model.firmware_available;
+  $("#fw-open").parentElement.hidden = !fwOk;     // no firmware to install, so no buttons, just the line
+  $("#fw-text").textContent = !fwOk
+    ? `Dorsal doesn't have LED firmware for the ${mouseName()}, so there's nothing to patch. Everything else in Dorsal works.`
+    : S.model && S.model.firmware_from_hub
+      ? `Always-on RGB LED. Built from the ${mouseName()} firmware file you pick (from ${S.model.brand}'s web hub) and installed over the USB cable.`
+      : "Always-on RGB LED. Built from your copy of the official software and installed over the USB cable.";
   setHtml($("#settings-device"), dl([
     ["Connection", S.link_type || "Not connected"],
     ["Firmware", S.firmware || "—"],
   ]));
-  $("#mouse-import").hidden = !!(A && A.mouse);
+  $("#mouse-import").hidden = !!(A && A.mouse) && !(S.model && S.model.photo === "drawing");
   if (S.log_len !== ui.logLen) {
     ui.logLen = S.log_len;
     call("log").then((lines) => {
@@ -1009,33 +1116,50 @@ function renderSettings() {
 
 // firmware installer
 
-const FW_TITLES = ["Find the official software", "Build and verify the firmware", "Connect the USB cable", "Install"];
+const fwTitles = (f) => [f.from_hub ? `Choose the ${f.model} firmware file` : "Find the official software",
+  "Build and verify the firmware", "Connect the USB cable", "Install"];
 function renderFirmware() {
   const f = S.firmware_installer, m = $("#modal");
-  if (!f.open) { if (m.dataset.kind === "fw") { m.hidden = $("#scrim").hidden = true; m.dataset.kind = ""; m.innerHTML = ""; } return; }
-  if (m.dataset.kind !== "fw") {
+  if (!f.open) { if (m.dataset.kind === "fw") { m.dataset.kind = ""; m.innerHTML = ""; layer(m, false); } return; }
+  const fresh = m.dataset.kind !== "fw";
+  if (fresh) {
     m.dataset.kind = "fw";
     m.innerHTML = `<h2>Install Dorsal firmware</h2>
-      <p>Always-on RGB for your R5 Ultra, controlled by Dorsal. Dorsal builds it from your copy of the official software, then installs it over the USB cable.</p>
+      <p id="fw-intro"></p>
       <div class="steps4" id="fw-steps"></div>
       <div class="progress" id="fw-progress" hidden><i></i></div>
-      <p class="note">Keep the USB cable connected until installation finishes. Dorsal verifies the written image before restarting the mouse.</p>
+      <p class="note" id="fw-untried" hidden></p>
+      <p class="note" id="fw-keep"></p>
       <div class="buttons"><button class="btn" id="fw-restore">Restore original firmware</button><span class="grow"></span>
         <button class="btn" id="fw-close">Close</button><button class="btn primary" id="fw-install">Install firmware</button></div>`;
-    m.hidden = $("#scrim").hidden = false;
     $("#fw-close").onclick = async () => { const ok = await call("firmware_close"); if (ok === false) toast("Wait until the install finishes: unplugging now leaves the mouse in install mode.", "warn"); };
+    // the mouse the question was asked about goes along, so a different one plugged in meanwhile isn't flashed
     $("#fw-install").onclick = async () => {
-      if (await confirmBox("Install Dorsal firmware", "Install now? The mouse restarts when it's done.\n\nKeep the cable plugged in until you see “Done”.", "Install"))
-        call("firmware_install", false);
+      const f = S.firmware_installer, key = f.key;
+      const untried = f.tried !== "your mouse" ? `This hasn't been tried on a real ${f.model} yet.\n\n` : "";
+      if (await confirmBox("Install Dorsal firmware", `${untried}Install on your ${f.brand} ${f.model} now? The mouse restarts when it's done.\n\nKeep the cable plugged in until you see “Done”.`, "Install"))
+        call("firmware_install", false, key);
     };
     $("#fw-restore").onclick = async () => {
-      if (await confirmBox("Restore original firmware", "Put Attack Shark's original firmware back? The LED will go back to only flashing when you change DPI.", "Restore"))
-        call("firmware_install", true);
+      const f = S.firmware_installer, key = f.key;
+      if (await confirmBox("Restore original firmware", `Put the original firmware back on your ${f.brand} ${f.model}? The LED will go back to only flashing when you change DPI.`, "Restore"))
+        call("firmware_install", true, key);
     };
   }
   if (!$("#fw-steps")) { m.dataset.kind = ""; return; }     // rebuilt on the next update
+  // said fresh every time: a different mouse can be plugged in while this is open
+  const who = `${f.brand}'s ${f.from_hub ? "web hub" : "app"}`;
+  $("#fw-intro").textContent = f.from_hub
+    ? `Always-on RGB for your ${f.brand} ${f.model}, controlled by Dorsal. You pick the ${f.model} firmware file (.hex) from ${f.brand}'s web hub, Dorsal checks it and changes one byte, then installs it over the USB cable.`
+    : `Always-on RGB for your ${f.model}, controlled by Dorsal. Dorsal builds it from your copy of the official software, then installs it over the USB cable.`;
+  $("#fw-keep").textContent = `Keep the USB cable connected until installation finishes, and close ${f.brand}'s app or web hub page first, they can hold the mouse open. ` + (f.readback
+    ? `When the mouse's installer allows it, Dorsal asks for each block back and compares it with what it wrote, like ${who} does, and won't restart the mouse if anything differs. The last step says whether it could.`
+    : "Dorsal waits for the mouse to acknowledge every block before it restarts it.");
+  const untried = $("#fw-untried");
+  untried.hidden = f.tried === "your mouse";
+  untried.textContent = `Nobody has installed this on a real ${f.model} yet. The patched firmware has only been run on Dorsal's virtual mouse, and Dorsal's installer has only talked to a pretend bootloader for it. It goes through the same stages ${who} does (erase, write, verify, restart) but with Dorsal's own code, it only installs a file it recognizes, and Restore original firmware is right here. But it's untried, so it's your call.`;
   setHtml($("#fw-steps"), f.steps.map((s, i) => `<div class="step4 ${s.state}"><span class="badge">${s.state === "ok" ? "✓" : i + 1}</span>
-      <div><b>${FW_TITLES[i]}</b><p>${esc(s.text)}</p>${i === 0 && f.needs_file ? '<button class="btn" id="fw-choose" style="margin-top:.6rem">Choose file…</button>' : ""}</div></div>`).join(""));
+      <div><b>${fwTitles(f)[i]}</b><p>${esc(s.text)}</p>${i === 0 && !f.busy ? `<button class="btn" id="fw-choose" style="margin-top:.6rem">${f.needs_file ? "Choose file…" : "Use a different file…"}</button>` : ""}</div></div>`).join(""));
   const choose = $("#fw-choose");
   if (choose) choose.onclick = () => call("firmware_choose");
   $("#fw-progress").hidden = f.progress === null;
@@ -1043,6 +1167,59 @@ function renderFirmware() {
   $("#fw-install").disabled = !f.can_install;
   $("#fw-restore").disabled = !f.can_restore;
   $("#fw-close").disabled = f.busy;
+  // shown once the buttons know if they're greyed out, so focus lands on one that works
+  if (fresh) layer(m, true, [$("#fw-install"), $("#fw-close")].find((b) => !b.disabled));
+}
+
+// setup: which mouse is this
+
+// only said when the picture is a stand-in drawing
+const DRAWING_NOTE = "That's a drawing for now. Dorsal gets the real picture from the brand's web hub when it can reach it, or Settings → Mouse → Import mouse image… grabs it from the official app.";
+async function openMousePicker(firstRun) {
+  const list = await call("mouse_choices");
+  if (!list) return;
+  const m = $("#modal");
+  let pick = (list.find((x) => x.detected) || list.find((x) => x.selected) || list[0]).key;
+  m.dataset.kind = "mouse";
+  m.classList.add("wide");
+  const shark = list.filter((x) => x.brand === "Attack Shark");
+  const brands = [...new Set(list.filter((x) => x.brand !== "Attack Shark").map((x) => x.brand))];
+  const ledBrands = [...new Set(list.filter((x) => x.brand !== "Attack Shark" && x.firmware).map((x) => x.brand))];
+  m.innerHTML = `<h2>${firstRun ? "Which mouse do you have?" : "Change mouse"}</h2>
+    <p>Pick yours so Dorsal shows the right picture and settings.${list.some((x) => x.detected) ? " The one that's plugged in is already picked." : ""}
+      ${S.settings.download_photos ? "Dorsal only downloads the picture of the one you pick, from its brand's website." : ""}</p>
+    <div class="mouse-pick">${shark.map((x) => `<button class="mouse-card" data-key="${x.key}">
+      ${x.photo ? `<img src="${x.photo}" alt="">` : ""}<b>${esc(x.name)}</b>
+      <small>${x.detected ? '<span class="badge on">plugged in</span><br>' : ""}${x.firmware ? "LED firmware available" : x.led_built_in ? "LED stays on, no firmware needed" : "No LED firmware"}</small></button>`).join("")}</div>
+    ${brands.length ? `<h3 class="mouse-others-head">Other brands</h3>
+    <p class="sub">Their settings come from their official apps, so Dorsal should work with them. Nobody has tried one yet.${ledBrands.length ? ` The ${ledBrands.join(" and ")} ones that have LED firmware say so when you pick them.` : " There's no LED firmware for them."}</p>
+    <div class="mouse-others">${brands.map((b) => `<div class="mouse-brand"><b>${esc(b)}</b><div class="mouse-minis">${list.filter((x) => x.brand === b)
+      .map((x) => `<button class="mouse-mini${x.photo ? "" : " text"}" data-key="${x.key}">${x.photo ? `<span class="pic"><img src="${x.photo}" alt=""></span>` : ""}
+        <b>${esc(x.name)}</b>${x.detected ? '<span class="badge on">plugged in</span>' : ""}</button>`).join("")}</div></div>`).join("")}</div>` : ""}
+    <p class="note" id="pick-note"></p>
+    <div class="buttons">${firstRun ? "" : '<button class="btn" id="pick-cancel">Cancel</button>'}<button class="btn primary" id="pick-ok">Use this mouse</button></div>`;
+  const show = () => {
+    const x = list.find((y) => y.key === pick);
+    $$("[data-key]", m).forEach((c) => c.classList.toggle("on", c.dataset.key === pick));
+    $("#pick-note").textContent = x.brand !== "Attack Shark" ? `Nobody has tried Dorsal on a ${x.brand} ${x.name} yet. Its limits come from its official app.${x.firmware ? ` It has LED firmware in Dorsal too, also untried: you pick the .hex from ${x.brand}'s web hub.` : ""}`
+      : x.led_built_in ? `Nobody has tried Dorsal on the ${x.name} yet. Its settings come from Attack Shark's web hub, and animated effects are off on it: every color change is saved to the mouse's memory.${x.cable_only ? " This is the older X11 (USB id 1D57, not the X11 Ultra) and it works over its USB cable only: its receiver isn't supported." : ""}${x.source === "drawing" ? " The picture is a drawing until Dorsal can reach that hub." : ""}`
+      : x.source === "drawing" ? DRAWING_NOTE
+      : "";
+    $("#pick-ok").textContent = `Use the ${x.name}`;
+  };
+  $$("[data-key]", m).forEach((c) => { c.onclick = () => { pick = c.dataset.key; show(); }; });
+  const close = () => { m.dataset.kind = ""; m.classList.remove("wide"); m.innerHTML = ""; m.onkeydown = null; layer(m, false); };
+  if (!firstRun) $("#pick-cancel").onclick = close;
+  m.onkeydown = (e) => { if (e.key === "Escape" && !firstRun && m.dataset.kind === "mouse") close(); };
+  $("#pick-ok").onclick = async () => {
+    const art = await call("choose_model", pick);
+    if (art !== undefined) { A.mouse = art; buildArt(); placeCallouts(); }
+    close();
+  };
+  show();
+  const on = $("[data-key].on", m);
+  if (on && on.classList.contains("mouse-mini")) on.scrollIntoView({ block: "nearest" });
+  layer(m, true, on);
 }
 
 // notices from Python
@@ -1070,8 +1247,9 @@ function showTab(name) {
   $$(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === name));
   moveTabIndicator();
   $$(".page").forEach((p) => p.classList.toggle("on", p.id === `page-${name}`));
-  const page = $(`#page-${name}`); page.scrollTop = 0;
   render();
+  // after render, so switches already have their state and don't slide in on the first visit
+  $(`#page-${name}`).scrollTop = 0;
   if (name === "buttons" && S && S.connected && ui.readFor !== S.profile && !S.bindings.some((b) => b.label) && !S.busy.includes("studio")) {
     ui.readFor = S.profile;
     call("read_bindings");       // show what's on the mouse without a click
@@ -1105,20 +1283,27 @@ function wire() {
   new ResizeObserver(moveTabIndicator).observe($("#tabs"));
   document.fonts.ready.then(moveTabIndicator);
   $$(".tab").forEach((t) => t.onclick = () => showTab(t.dataset.tab));
+  // screen readers get the hover explanations too
+  $$("[data-tip]").forEach((el) => el.setAttribute("aria-description", el.dataset.tip));
 
-  const menu = $("#profile-menu");
-  $("#profile-btn").onclick = (e) => {
+  const menu = $("#profile-menu"), menuBtn = $("#profile-btn");
+  const showMenu = (on) => { menu.hidden = !on; menuBtn.setAttribute("aria-expanded", on); };
+  menuBtn.onclick = (e) => {
     e.stopPropagation();
-    menu.innerHTML = [1, 2, 3].map((n) => `<button class="${n === S.profile ? "on" : ""}" data-n="${n}">${n === S.profile ? '<svg class="ic sm"><use href="#i-check"/></svg>' : '<span style="width:1rem"></span>'}Profile ${n}</button>`).join("");
-    menu.hidden = !menu.hidden;
+    menu.innerHTML = [1, 2, 3].map((n) => `<button class="${n === S.profile ? "on" : ""}" data-n="${n}">${n === S.profile ? '<svg class="ic sm"><use href="#i-check"/></svg>' : '<span style="width:1rem"></span>'}Onboard ${n}</button>`).join("");
+    showMenu(menu.hidden);
     $$("button", menu).forEach((b) => b.onclick = async () => {
-      menu.hidden = true;
+      showMenu(false); menuBtn.focus();
       if (+b.dataset.n === S.profile) return;
-      if (S.dirty && !await confirmBox("Switch onboard profile?", "Pending edits will be replaced by the other profile's settings. Save them to the mouse first if you want to keep them.", "Switch profile")) return;
+      if (S.dirty && !await confirmBox("Switch onboard profile?", "Changes you haven't applied get replaced by the other profile's settings. Apply them first if you want to keep them.", "Switch profile")) return;
       call("set_profile", +b.dataset.n);
     });
+    if (!menu.hidden) $("button", menu).focus();
   };
-  document.addEventListener("click", () => { menu.hidden = true; });
+  document.addEventListener("click", () => showMenu(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !menu.hidden) { showMenu(false); menuBtn.focus(); }
+  });
 
   $("#presets").innerHTML = PRESET_COLORS.map((c) => `<button data-c="${c}" style="--c:${c}" title="${c}"></button>`).join("");
   $$("#presets button").forEach((b) => b.onclick = () => call("set_color", b.dataset.c));
@@ -1135,8 +1320,8 @@ function wire() {
   };
 
   $$(".quick-toggle").forEach((b) => b.onclick = () => call("set_setting", b.dataset.setting, !S[b.dataset.setting]));
-  $("#deb-minus").onclick = () => call("set_setting", "debounce", Math.max(0, S.debounce - 1));
-  $("#deb-plus").onclick = () => call("set_setting", "debounce", Math.min(20, S.debounce + 1));
+  $("#deb-minus").onclick = () => call("set_setting", "debounce", Math.max(S.debounce_min ?? 0, S.debounce - (S.debounce_step || 1)));
+  $("#deb-plus").onclick = () => call("set_setting", "debounce", Math.min(S.debounce_max ?? 20, S.debounce + (S.debounce_step || 1)));
 
   $("#competitive").onclick = () => call("competitive_mode", S.competitive == null ? null : !S.competitive);
   const dpi = $("#dpi");
@@ -1153,8 +1338,6 @@ function wire() {
   wireDpiField();
 
   $("#apply").onclick = () => call("apply");
-  $("#review-changes").onclick = () => dialog({title: `Pending · onboard profile ${S.profile}`, text: (S.pending_changes || []).join("\n") || "Loaded setup is ready to save.", html: '<p>Save to mouse writes the configuration, then reads back performance and sleep settings. Lighting receives a command acknowledgement.</p>'});
-  $$("[data-diagnostic-view]").forEach(b => b.onclick = () => $(`#diag-tabs [data-view="${b.dataset.diagnosticView}"]`).click());
   $("#dock-read").onclick = () => call("read_settings");
 
   $("#assign-save").onclick = saveAssignment;
@@ -1165,8 +1348,7 @@ function wire() {
   $("#step-kind").onchange = () => { $("#step-value").value = { Delay: "100", "Mouse down": "Left", "Mouse up": "Left", Wheel: "Up" }[$("#step-kind").value] || "A"; };
   $("#macro-name").oninput = () => {
     call("set_unsaved", macroDirty());
-    $("#macro-save").textContent = macroDirty() ? "Save changes" : "Saved to library";
-    $("#macro-save").disabled = !macroDirty() || !ui.macro.steps.length;
+    macroButtons();
   };
   $("#macro-library").onchange = async (e) => {
     const id = e.target.value;
@@ -1216,6 +1398,13 @@ function wire() {
   };
   $("#step-up").onclick = () => move(-1);
   $("#step-down").onclick = () => move(1);
+  // up and down pick the step above or below. Delete is handled once, further down
+  $("#macro-table").addEventListener("keydown", (e) => {
+    const m = ui.macro;
+    if (!m.steps.length || !["ArrowUp", "ArrowDown"].includes(e.key) || !e.target.closest(".tr[data-i]")) return;
+    e.preventDefault();
+    pickStep(Math.max(0, Math.min(m.steps.length - 1, (m.sel ?? -1) + (e.key === "ArrowDown" ? 1 : -1))));
+  });
   $("#macro-record").onclick = async () => {
     const events = await recordMacro();
     if (!events || !events.length) return;
@@ -1244,8 +1433,17 @@ function wire() {
       call("upload_macro", slot, ui.macro.steps);
   };
   $("#macro-read").onclick = async () => { if (await discardOk()) call("read_macro_slot", +$("#macro-slot").value); };
+  $("#macro-clear").onclick = async () => {
+    const slot = +$("#macro-slot").value;
+    if (await confirmBox("Clear slot", `Empty macro slot ${slot} on the mouse?\nButtons using this slot will do nothing until you upload a new one.`, "Clear"))
+      call("clear_macro_slot", slot);
+  };
+  $("#per-stage").onchange = (e) => call("set_color_mode", e.target.checked ? "stages" : "single");
+  $("#stage-less").onclick = () => call("set_stage_count", (S.stage_count || 6) - 1);
+  $("#stage-more").onclick = () => call("set_stage_count", (S.stage_count || 6) + 1);
   document.addEventListener("keydown", (e) => {
-    if (tab === "macros" && e.key === "Delete" && document.activeElement === document.body) $("#step-remove").click();
+    const a = document.activeElement;
+    if (tab === "macros" && e.key === "Delete" && (a === document.body || a.closest?.("#macro-table"))) $("#step-remove").click();
   });
 
   $("#profile-import").onclick = () => call("import_profile");
@@ -1284,13 +1482,15 @@ function wire() {
   $("#fw-open").onclick = () => call("firmware_open");
   $("#fw-doc").onclick = () => call("open_doc", "FIRMWARE.md");
   $("#dev-refresh").onclick = () => call("read_settings");
+  $("#mouse-pick").onclick = () => openMousePicker(false);
   $("#set-updates").onchange = (e) => call("set_check_updates", e.target.checked);
+  $("#set-photos").onchange = (e) => call("set_download_photos", e.target.checked);
   $("#update-btn").onclick = () => call((S.update || {}).state === "available" ? "open_update" : "check_updates");
   $("#set-angle").onchange = (e) => call("set_setting", "angle_snap", e.target.checked);
   $("#sleep-seg").onclick = (e) => { const b = e.target.closest("button[data-min]"); if (b) call("set_setting", "sleep_min", +b.dataset.min); };
   $("#mouse-import").onclick = async () => { const m = await call("import_mouse_image"); if (m) { A.mouse = m; buildArt(); placeCallouts(); } };
   $("#profile-reset").onclick = async () => {
-    if (await confirmBox("Reset profile", `Reset profile ${S.profile} on the mouse to factory settings?\nIts DPI stages and colors will be lost.`, "Reset")) call("reset_profile");
+    if (await confirmBox("Reset onboard profile", `Reset onboard profile ${S.profile} to factory settings?\nIts DPI stages and colors will be lost.`, "Reset")) call("reset_profile");
   };
 
   window.addEventListener("resize", () => placeCallouts());
@@ -1454,7 +1654,9 @@ function moveTabIndicator() {
 window.dorsal = {
   state(s) {
     const first = !S;
+    const newMouse = !first && A && s.model && S.model && (s.model.key !== S.model.key || s.model.photo_version !== S.model.photo_version);
     S = s;
+    if (newMouse) call("mouse_art").then((m) => { A.mouse = m; buildArt(); placeCallouts(); });
     if (first) document.documentElement.className = `theme-${s.settings.theme}`;
     render();
   },
@@ -1484,6 +1686,7 @@ async function start() {
   wirePicker();
   S = hello.state;
   render();
+  if (!S.model_chosen) openMousePicker(true);
   $$("[data-art] img").forEach((img) => img.addEventListener("load", placeCallouts));
 }
 if (window.pywebview && window.pywebview.api) start();

@@ -8,6 +8,7 @@ PACKET_SIZE = 64
 DEVICE_MOUSE = 2
 NUM_DPI_STAGES = 6
 DPI_MIN, DPI_MAX = 100, 42000
+DPI_TOP = 60000          # the highest any mouse Dorsal knows goes (the F1 Air)
 
 R5_VID = 0x373E
 R5_PIDS = (0x0046, 0x0047)  # cable, dongle
@@ -23,6 +24,19 @@ POLLING_RATES = {
 }
 WIRED_POLLING_RATES = ["125 Hz", "250 Hz", "500 Hz", "1000 Hz"]   # the cable tops out at 1000
 LIFT_OFF_DISTANCES = {"0.7 mm": 0.7, "1 mm": 1.0, "2 mm": 2.0}
+
+
+def lod_mm(name: str) -> float | None:
+    """"1.2 mm" -> 1.2. Other mice have heights Attack Shark's don't (the F1 Air: 0.9, 1.2, 1.4, 1.6)."""
+    try:
+        mm = float(str(name).split()[0])
+    except (ValueError, IndexError):
+        return None
+    return mm if 0.5 <= mm <= 3.0 else None
+
+
+def lod_name(mm: float) -> str:
+    return f"{mm:g} mm"
 
 
 SLEEP_NEVER = 65535  # also keeps the LED awake
@@ -46,7 +60,8 @@ def _byte(value: int) -> int:
 
 
 def clamp_dpi(value: int) -> int:
-    return max(DPI_MIN, min(DPI_MAX, int(value)))
+    # the packet has room for more than the R5's 42000. each mouse's own top is in models.py (core keeps to it)
+    return max(DPI_MIN, min(DPI_TOP, int(value)))
 
 
 # LED
@@ -125,8 +140,9 @@ def polling_rate(profile: int, rate_byte: int) -> bytes:
 
 
 def lod_byte(mm: float) -> int:
-    # 1 and 2 mm are sent as is, 0.7 mm as tenths with the top bit set (0x87)
-    if mm >= 1.0:
+    # 1 and 2 mm are sent as is, 0.7 mm as tenths with the top bit set (0x87). Attack Shark's mice
+    # stop there, 0.9-1.6 mm go the same tenths way for mice on other protocols (the F1 Air)
+    if mm >= 1.0 and float(mm).is_integer():
         return int(mm) & 0xFF
     return (int(round(mm * 10)) | 0x80) & 0xFF
 
@@ -329,6 +345,22 @@ def get_firmware_version() -> bytes:
     return bytes(d)
 
 
+# which sensor is inside, answer at reply byte 7. the official app uses it to pick
+# the lift-off choices: a 3395 only gets 1 and 2 mm and no Competitive Mode
+GET_SENSOR = 0x8F
+SENSORS = {1: "PAW3395", 2: "PAW3950"}
+
+
+def get_sensor_model() -> bytes:
+    d = bytearray(PACKET_SIZE)
+    d[2], d[3], d[4], d[5] = DEVICE_MOUSE, 1, 1, GET_SENSOR
+    return bytes(d)
+
+
+def lift_off_choices(sensor: int | None) -> list[str]:
+    return ["1 mm", "2 mm"] if sensor == 1 else list(LIFT_OFF_DISTANCES)
+
+
 def parse_firmware_version(resp: bytes) -> str | None:
     for base in (1, 0):
         if len(resp) > base + 9 and resp[base] == REPLY_OK and resp[base + 5] == GET_FIRMWARE:
@@ -348,3 +380,42 @@ def hex_to_rgb(value: str) -> RGB:
 def rgb_to_hex(rgb: RGB) -> str:
     r, g, b = (max(0, min(255, int(c))) for c in rgb)
     return f"#{r:02X}{g:02X}{b:02X}"
+
+
+# the other way round: what does a packet Dorsal built mean? mice that speak another protocol
+# (device.ForeignMouse) get Dorsal's usual packets and turn them into their own calls with this
+
+def describe_write(packet: bytes) -> tuple[str, object] | None:
+    """(setting name, value) for a settings packet built above, None for anything else."""
+    d = bytes(packet)
+    if len(d) < 8 or d[2] != DEVICE_MOUSE or d[5] & 0x80:
+        return None
+    category, command = d[4], d[5]
+    if (category, command) == (1, 1):
+        count = min(d[7], NUM_DPI_STAGES)
+        return "stage_dpis", [((d[8 + i * 4] << 8) | d[9 + i * 4], (d[10 + i * 4] << 8) | d[11 + i * 4]) for i in range(count)]
+    if (category, command) == (2, 1):
+        return "stage_colors", [tuple(d[7 + i * 3:10 + i * 3]) for i in range(NUM_DPI_STAGES)]
+    if (category, command) == (2, 0):
+        return "light_effect", LightState(mode=d[8], speed=d[10], rgb=(d[11], d[12], d[13]))
+    if (category, command) == (1, 0):
+        rate = decode_polling(d[7])
+        return "polling", int(rate.split()[0]) if rate else None
+    if (category, command) == (1, 8):
+        return "lod", decode_lod(d[7])
+    if (category, command) == (0, 8):
+        return "debounce", d[7]
+    if (category, command) == (0, 7):
+        return "sleep_s", (d[7] << 8) | d[8]
+    if (category, command) == (2, 2):
+        return "brightness", d[8]
+    simple = {(1, 9): "motion_sync", (1, 10): "ripple", (1, 4): "angle_snap", (1, 19): "competitive"}
+    if (category, command) in simple:
+        return simple[(category, command)], bool(d[7])
+    if (category, command) == (1, 2):
+        return "active_stage", d[7]
+    if (category, command) == (0, 5):
+        return "profile", d[6]
+    if (category, command) == (0, 13):
+        return "reset_profile", d[6]
+    return None

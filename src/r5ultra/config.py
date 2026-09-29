@@ -21,7 +21,10 @@ DEFAULTS: dict = {
     "angle_snap": False,
     "close_to_tray": True,
     "check_updates": True,
+    "download_photos": True,      # fetch each mouse's picture from its brand's web hub
     "dpi_stage": 1,
+    "stage_count": 6,             # how many of the 6 DPI stages the DPI button cycles through
+    "color_mode": "single",       # "stages" = every DPI stage its own LED color
     "stage_dpis": DEFAULT_STAGE_DPIS,
     "stage_colors": DEFAULT_STAGE_COLORS,
     "polling": "1000 Hz",
@@ -35,11 +38,16 @@ DEFAULTS: dict = {
     "rainbow_dir": "forward",
     "last_effect": None,
     "firmware_source": None,
+    "firmware_hex": None,         # the firmware .hex last picked for a mouse that isn't in the official app (LAMZU)
     "theme": "ember",
+    "model": "r5ultra",
+    "model_chosen": False,        # the setup wizard asks which mouse you have until you pick one
+    "confirmed_models": [],       # the mice its owner said "yes, that's mine" to. One nobody has tried isn't written to until then
 }
 
 
 OLD_DIR_NAMES = ("R5UltraController",)
+SLEEP_MINUTES = (0, 1, 2, 5, 10, 30)     # what the app offers, 0 = never
 
 
 def _appdata() -> Path:
@@ -57,7 +65,12 @@ def migrate_old_dir() -> bool:
     for name in OLD_DIR_NAMES:
         old = _appdata() / name
         if old.is_dir():
-            shutil.copytree(old, new)
+            # copied next to it and renamed when it's all there, so a crash half way can't leave a
+            # half-empty Dorsal folder that stops this from ever running again
+            tmp = new.with_name(new.name + ".migrating")
+            shutil.rmtree(tmp, ignore_errors=True)
+            shutil.copytree(old, tmp)
+            os.replace(tmp, new)
             return True
     return False
 
@@ -84,7 +97,9 @@ def with_defaults(saved: dict) -> dict:
     cfg = {}
     for key, default in DEFAULTS.items():
         value = saved.get(key, default)
-        if default is None:
+        if key == "sleep_min":                # minutes, or None = go by always_on
+            cfg[key] = value if isinstance(value, int) and not isinstance(value, bool) and value in SLEEP_MINUTES else None
+        elif default is None:
             cfg[key] = value if isinstance(value, str) else None
         elif isinstance(default, bool):
             cfg[key] = value if isinstance(value, bool) else default
@@ -92,9 +107,13 @@ def with_defaults(saved: dict) -> dict:
             ok = isinstance(value, (int, float)) and not isinstance(value, bool)
             cfg[key] = value if ok else default
         elif isinstance(default, list):
-            cfg[key] = value if isinstance(value, list) else list(default)
+            cfg[key] = list(value) if isinstance(value, list) else list(default)      # a copy: the caller may append to it
         else:
             cfg[key] = value if isinstance(value, type(default)) else default
+    if saved and "model_chosen" not in saved:
+        cfg["model_chosen"] = True     # saved before the mouse picker existed: those were all R5 Ultra owners
+    if saved and "confirmed_models" not in saved and cfg["model_chosen"] and cfg.get("model"):
+        cfg["confirmed_models"] = [cfg["model"]]        # saved before it was kept per mouse: the one picked then
     cfg["stage_dpis"] = _fit_list(cfg["stage_dpis"], DEFAULT_STAGE_DPIS, int)
     cfg["stage_colors"] = _fit_list(cfg["stage_colors"], DEFAULT_STAGE_COLORS, str)
     return cfg

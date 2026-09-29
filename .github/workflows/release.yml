@@ -55,12 +55,21 @@ jobs:
             dist/Dorsal-Setup*.exe
             dist/Dorsal-*-portable.zip
             dist/SHA256SUMS.txt
+      - name: Is this a pre-release?
+        id: pre
+        shell: pwsh
+        run: |
+          # notes that start "# Dorsal 1.10 (pre-release)" go out as a pre-release. GitHub doesn't count those as the
+          # latest release, so the download button and Dorsal's update check stay on the last full one
+          $first = Get-Content docs/RELEASE_NOTES.md -TotalCount 1
+          "pre=$($first -match '\(pre-release\)')".ToLower() | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: Dorsal ${{ github.ref_name }}
           body_path: docs/RELEASE_NOTES.md
+          prerelease: ${{ steps.pre.outputs.pre == 'true' }}
           files: |
             dist/Dorsal-Setup*.exe
             dist/Dorsal-*-portable.zip

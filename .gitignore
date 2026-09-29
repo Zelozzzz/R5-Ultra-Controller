@@ -33,3 +33,4 @@ dist/
 build/
 *.spec
 !packaging/dorsal.spec
+tools/virtual_mouse/results/

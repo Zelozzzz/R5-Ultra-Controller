@@ -83,7 +83,7 @@ def _slot(slot):
 
 def button_packet(profile: int, button: int, binding: Binding | None = None) -> bytes:
     if profile not in (1, 2, 3) or button not in BUTTONS:
-        raise ValueError("Invalid profile or R5 Ultra button.")
+        raise ValueError("Invalid profile or mouse button.")
     if binding is not None and (not 0 <= binding.kind <= 255 or len(binding.data) > 10):
         raise ValueError("Invalid button action.")
     size = len(binding.data) if binding is not None else 10
@@ -201,6 +201,10 @@ class Onboard:
             self._exchange(macro_packet(slot, 3, offset, data[offset:offset + 51]), extra=7)
         if self.read_macro(slot) != data:
             raise OSError("The mouse's macro data did not match the upload.")
+
+    def clear_macro(self, slot: int):
+        with self.mouse._lock, self.mouse:
+            self._write_macro(slot, b"")
 
     def write_macro(self, slot: int, steps: list[macros.Step]):
         data = macros.encode(steps)

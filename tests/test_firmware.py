@@ -9,6 +9,7 @@ from intelhex import IntelHex
 
 from r5ultra import firmware as fw
 from r5ultra import flasher
+from r5ultra import models
 
 
 def fake_stock(size=0x100) -> IntelHex:
@@ -90,8 +91,9 @@ def test_build_patched_end_to_end(tmp_path, monkeypatch):
     """Pretend our fake image is the known stock one, then check the whole
     stock -> patch -> verify -> write pipeline."""
     stock = fake_stock()
-    fake_stock_known = fw.KnownImage("fake stock", fw.image_sha256(stock), 0, 0, patched=False)
-    fake_patched_known = fw.KnownImage("fake patched", fw.image_sha256(fw.apply_patch(stock)), 0, 0, patched=True)
+    lo, hi = stock.minaddr(), stock.maxaddr()
+    fake_stock_known = fw.KnownImage("fake stock", fw.image_sha256(stock), lo, hi, patched=False)
+    fake_patched_known = fw.KnownImage("fake patched", fw.image_sha256(fw.apply_patch(stock)), lo, hi, patched=True)
     monkeypatch.setattr(fw, "KNOWN_IMAGES", (fake_stock_known, fake_patched_known))
     monkeypatch.setattr(fw, "PATCHED_840", fake_patched_known)
 
@@ -108,7 +110,7 @@ def test_build_patched_end_to_end(tmp_path, monkeypatch):
 def test_load_stock_rejects_unknown_firmware(tmp_path):
     src = tmp_path / "other.hex"
     fake_stock().write_hex_file(str(src))
-    with pytest.raises(fw.FirmwareError, match="doesn't match the stock image"):
+    with pytest.raises(fw.FirmwareError, match="doesn't match any stock image"):
         fw.load_stock(src)
 
 
@@ -116,6 +118,42 @@ def test_real_known_images_are_sane():
     for known in fw.KNOWN_IMAGES:
         assert len(known.sha256) == 64 and known.start < known.end
     assert fw.STOCK_840.sha256 != fw.PATCHED_840.sha256
+    assert len({k.sha256 for k in fw.KNOWN_IMAGES}) == len(fw.KNOWN_IMAGES)
+
+
+def test_every_mouse_with_firmware_has_a_stock_a_patched_image_and_a_patch():
+    for model in models.MODELS:
+        stock, patched = fw.images_for(model)
+        if model.has_firmware:
+            assert stock and patched and not stock.patched and patched.patched
+            assert (stock.start, stock.end) == (patched.start, patched.end)
+            assert stock.start <= fw.PATCHES[model.key].address < stock.end
+        else:
+            assert stock is None and patched is None
+
+
+def test_stock_hex_from_asar_picks_the_right_mouse(tmp_path):
+    path = tmp_path / "app.asar"
+    path.write_bytes(make_asar({
+        "web/static/hex/JXC_R5_Ultra_8K_Mouse_840_APP_v0.00.12.00_x.hex": b"r5",
+        "web/static/hex/JXC_M5_Ultra_8K_Mouse_840_APP_v0.00.08.00_x.hex": b"m5",
+        "web/static/hex/XMG_R6_8K_Mouse_840_APP_3950_v0.00.02.00_x.hex": b"r6",
+        "web/static/hex/XMG_R6_8K_Dongle_820_APP_v0.00.02.00_x.hex": b"dongle",
+    }))
+    assert fw.stock_hex_from_asar(path) == b"r5"
+    assert fw.stock_hex_from_asar(path, models.M5_ULTRA) == b"m5"
+    assert fw.stock_hex_from_asar(path, models.R6) == b"r6"
+    with pytest.raises(fw.FirmwareError, match="no firmware|doesn't come with"):
+        fw.stock_hex_from_asar(path, models.R8)
+
+
+def test_flasher_wont_put_one_mouses_firmware_on_another(monkeypatch):
+    stock = fake_stock()
+    known = fw.KnownImage("fake m5", fw.image_sha256(stock), stock.minaddr(), stock.maxaddr(), patched=True,
+                          model=models.M5_ULTRA.key)
+    monkeypatch.setattr(fw, "KNOWN_IMAGES", (known,))
+    with pytest.raises(fw.FirmwareError, match="M5 Ultra firmware, not R5 Ultra"):
+        flasher.flash(stock, log=lambda _m: None, model=models.R5_ULTRA)
 
 
 # flasher packets
@@ -170,3 +208,107 @@ def test_flash_reports_progress_in_order(monkeypatch):
     program = [f for p, f in seen if p == "program"]
     assert program == sorted(program) and program[-1] == 1.0
     assert [f for p, f in seen if p == "verify"][-1] == 1.0
+
+
+def test_newer_hub_versions_carry_their_own_patch_spot():
+    newer = [k for k in fw.KNOWN_IMAGES if k.patch is not None]
+    assert {k.model for k in newer} == {"r6", "m5ultra", *(k.model for k in fw.LAMZU_IMAGES)}
+    for k in newer:
+        assert not k.patched and k.patch.original == fw.PATCH_A.original
+        twin = [p for p in fw.KNOWN_IMAGES if p.patched and p.model == k.model and p.end == k.end]
+        assert len(twin) == 1
+
+
+@pytest.mark.parametrize("name", ["XMG_R6_8K_Mouse_840_APP_3950_v0.00.03.01_20250905.hex",
+                                  "JXC_M5_Ultra_8K_Mouse_840_APP_v0.00.09.00_20250721.hex"])
+def test_newer_hub_firmware_patches_to_the_known_image(name):
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "firmware" / name
+    if not path.exists():
+        pytest.skip("hub firmware not downloaded (it's not in the repo)")
+    stock = fw.load_hex(path)
+    known = fw.identify(stock)
+    assert known is not None and not known.patched
+    patched = fw.identify(fw.apply_patch(stock))
+    assert patched is not None and patched.patched and patched.model == known.model
+
+
+def _known(stock, **kw):
+    return fw.KnownImage(kw.pop("name", "fake"), fw.image_sha256(stock), stock.minaddr(), stock.maxaddr(), **kw)
+
+
+def test_a_known_image_at_another_address_is_not_known(monkeypatch):
+    stock = fake_stock()
+    known = _known(stock, patched=False)
+    monkeypatch.setattr(fw, "KNOWN_IMAGES", (known,))
+    assert fw.identify(stock) is known
+    moved = IntelHex()
+    for a in range(stock.minaddr(), stock.maxaddr() + 1):
+        moved[a + 0x1000] = stock[a]
+    assert fw.image_sha256(moved) == known.sha256       # the same bytes...
+    assert fw.identify(moved) is None                   # ...but the flasher would write them somewhere else
+
+
+def test_a_broken_hex_is_a_clear_error(tmp_path):
+    bad = tmp_path / "broken.hex"
+    bad.write_text(":020000040002FA\n:XYZ not a record\n")
+    with pytest.raises(fw.FirmwareError, match="valid .hex"):
+        fw.load_hex(bad)
+    with pytest.raises(fw.FirmwareError, match="valid .hex"):
+        fw.load_hex(b"\xff\xfe not ascii")
+    with pytest.raises(OSError):
+        fw.load_hex(tmp_path / "missing.hex")            # a missing file stays the caller's problem
+
+
+def test_a_hex_for_the_wrong_mouse_is_refused_up_front(tmp_path, monkeypatch):
+    stock = fake_stock()
+    monkeypatch.setattr(fw, "KNOWN_IMAGES", (_known(stock, patched=False, model=models.M5_ULTRA.key),))
+    path = tmp_path / "m5.hex"
+    stock.write_hex_file(str(path))
+    with pytest.raises(fw.FirmwareError, match="M5 Ultra firmware, not R5 Ultra"):
+        fw.load_stock(path, models.R5_ULTRA)
+    assert fw.load_stock(path, models.M5_ULTRA) is not None
+
+
+def test_version_helpers():
+    assert fw.version_of(fw.STOCK_840) == (0, 0, 12, 0) and fw.version_of(fw.R6_STOCK_0301) == (0, 0, 3, 1)
+    assert fw.parse_version("0.0.12.0") == (0, 0, 12, 0) and fw.parse_version("0.0.9.0") > fw.parse_version("0.0.8.0")
+    assert fw.parse_version("v3.01") is None and fw.parse_version(None) is None and fw.parse_version("a.b.c.d") is None
+
+
+def test_a_mouse_that_doesnt_come_back_is_an_error_not_done(monkeypatch):
+    stock = fake_stock()
+    monkeypatch.setattr(fw, "KNOWN_IMAGES", (_known(stock, patched=True),))
+
+    class Dev:
+        def open_path(self, _path):
+            pass
+
+        def set_nonblocking(self, _flag):
+            pass
+
+        def send_feature_report(self, _data):
+            pass
+
+        def get_feature_report(self, _rid, _n):
+            return [0, 0, 0, 0, 0, 0xB0] + [0] * 59
+
+        def close(self):
+            pass
+
+    class Hid:
+        @staticmethod
+        def enumerate(vid=0, pid=0):       # only the bootloader is there, the mouse itself never comes back
+            return ([dict(path=b"bl", usage_page=0xFFFF, usage=0, vendor_id=vid, product_id=pid)]
+                    if pid == models.R5_ULTRA.bootloader_pid else [])
+
+        @staticmethod
+        def device():
+            return Dev()
+
+    monkeypatch.setattr(flasher, "_hid", lambda: Hid)
+    monkeypatch.setattr(flasher.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(flasher, "wait_for_device", lambda *a, **k: None)
+    with pytest.raises(flasher.FlashWritten, match="didn't come back"):
+        flasher.flash(stock, log=lambda _m: None)
+    assert issubclass(flasher.FlashWritten, flasher.FlashError)
