@@ -29,7 +29,12 @@ pass). The other two web hub versions (the M5 Ultra v0.00.09.00 and the R6 v0.00
 
 The six LAMZU mice went through `checkup.py` (LED, settings, buttons, power, abuse, wear, features): 63
 to 65 checks each on stock and on Dorsal firmware, 0 failed, and the patch changes nothing outside the
-LED (49 or 50 checks compared side by side each). The whole app was run against them with `dorsal_check.py`. Their firmware is a different build
+LED (49 or 50 checks compared side by side each). The whole app was run against them with `dorsal_check.py`. What
+the patch keeps on is each one's single status LED (LAMZU's manuals: steady ice blue when charged, blinks red when
+low; the firmware shows the DPI stage color on it for 3 s after the DPI button). Where it sits differs: the Paro's
+is a slit at the front, lit in its picture, so Dorsal lights it on screen. On the Thorn V2 a review puts it under
+the logo at the back. For the Maya X, Maya, Inca and Thorn nobody here has seen it lit, so Dorsal doesn't light their
+picture and can't say how much of it you see from above. Their firmware is a different build
 of the same code (the image starts at 0x6000, the LED is wired the other way round, the DPI button
 goes through 5 stages), see [docs/FIRMWARE.md](FIRMWARE.md#lamzu) (which also says where to get the .hex
 files). Nobody has flashed a real one. The flasher sends them the bytes LAMZU's own web hub sends (checked
@@ -116,8 +121,9 @@ so Dorsal asks the mouse its number, the same way it tells the F1 Air and X11 Ul
   in its code looks at the model number itself. Dorsal writes them with the same code as the F1 Air (a
   3955) and the X11 Ultra (a 3950), which other people checked on real ones. Its table matches the hub's
   config number for number (sensor and top DPI, 19 numbers)
-- **the light:** every number has the hub's "DPI Lighting Effect" (off, always on, breathing) in the
-  config, so every one has a DPI light, and Dorsal keeps it on the way it does on the F1 Air. No firmware
+- **the light:** every number has the hub's "DPI Lighting Effect" setting (off, always on, breathing) in
+  its table, and Dorsal sets always on the way it does on the F1 Air. Whether each of them has a light to show
+  it isn't known (the F1 Air and X11 Ultra do). No firmware
 - **what nobody knows:** which number is which mouse, and whether one of them has a quirk like the X11
   Ultra's "are you there" byte, so for these a table read that works counts as "there" too. Nobody has
   tried one, so like every untried mouse nothing gets written on its own until you pick it in the setup

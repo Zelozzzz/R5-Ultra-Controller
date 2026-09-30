@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.11
 
 - Every mouse but the R5 is flashed with the bytes its maker's own tool sends: LAMZU's web hub for the six
   LAMZU mice, Attack Shark's app for the M5 Ultra and R6 (the two have the same update code). Before, they
@@ -24,8 +24,8 @@
 - The rest of Attack Shark's Mouse Hub mice: the V8, X8 Ultra, V5, R11 Ultra and so on. The hub's config has no
   names for them, only model numbers, so Dorsal asks the mouse its number (like it already did to tell the F1 Air
   and X11 Ultra apart) and shows it as "Mouse Hub model 12" and so on, with the hub's own sensor, top DPI and
-  lift-off heights for that number. Every one of them has the hub's DPI light setting, so the LED stays on without
-  any firmware. Nobody has tried one, so nothing is written on its own until you pick it, and the picker only
+  lift-off heights for that number. Every one of them has the hub's DPI light setting, which Dorsal sets to always
+  on like on the F1 Air; whether each has a light to show it isn't known. Nobody has tried one, so nothing is written on its own until you pick it, and the picker only
   shows one once it's plugged in. Two more cable ids from the hub's config are known too.
 - The mouse picker's "Use the ..." button is always on screen now (it was below the window's bottom edge at
   1440x900), and the big numbers and the wordmark use Bahnschrift, the DIN-style font that comes with Windows.

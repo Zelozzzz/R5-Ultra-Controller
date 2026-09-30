@@ -1190,7 +1190,7 @@ async function openMousePicker(firstRun) {
       ${S.settings.download_photos ? "Dorsal only downloads the picture of the one you pick, from its brand's website." : ""}</p>
     <div class="mouse-pick">${shark.map((x) => `<button class="mouse-card" data-key="${x.key}">
       ${x.photo ? `<img src="${x.photo}" alt="">` : ""}<b>${esc(x.name)}</b>
-      <small>${x.detected ? '<span class="badge on">plugged in</span><br>' : ""}${x.firmware ? "LED firmware available" : x.led_built_in ? "LED stays on, no firmware needed" : "No LED firmware"}</small></button>`).join("")}</div>
+      <small>${x.detected ? '<span class="badge on">plugged in</span><br>' : ""}${x.firmware ? "LED firmware available" : x.key.startsWith("mousehub-") ? "Same DPI light setting as the F1 Air" : x.led_built_in ? "LED stays on, no firmware needed" : "No LED firmware"}</small></button>`).join("")}</div>
     ${shark.some((x) => x.key.startsWith("mousehub-")) ? "" : `<p class="hub-hint">Got a V8, X8 Ultra, V5, R11 Ultra or another mouse that uses Attack Shark's Mouse Hub? Plug it in and it shows up here: the mouse tells Dorsal which one it is.</p>`}
     ${brands.length ? `<h3 class="mouse-others-head">Other brands</h3>
     <p class="sub">Their settings come from their official apps, so Dorsal should work with them. Nobody has tried one yet.${ledBrands.length ? ` The ${ledBrands.join(" and ")} ones that have LED firmware say so when you pick them.` : " There's no LED firmware for them."}</p>
@@ -1202,7 +1202,7 @@ async function openMousePicker(firstRun) {
   const show = () => {
     const x = list.find((y) => y.key === pick);
     $$("[data-key]", m).forEach((c) => c.classList.toggle("on", c.dataset.key === pick));
-    $("#pick-note").textContent = x.brand !== "Attack Shark" ? `Nobody has tried Dorsal on a ${x.brand} ${x.name} yet. Its limits come from its official app.${x.firmware ? ` It has LED firmware in Dorsal too, also untried: you pick the .hex from ${x.brand}'s web hub.` : ""}`
+    $("#pick-note").textContent = x.brand !== "Attack Shark" ? `Nobody has tried Dorsal on a ${x.brand} ${x.name} yet. Its limits come from its official app.${x.firmware ? ` It has LED firmware in Dorsal too, also untried: you pick the .hex from ${x.brand}'s web hub, and it keeps the mouse's small status LED lit in your DPI color.` : ""}`
       : x.led_built_in ? `Nobody has tried Dorsal on the ${x.name} yet. Its settings come from Attack Shark's web hub, and animated effects are off on it: every color change is saved to the mouse's memory.${x.cable_only ? " This is the older X11 (USB id 1D57, not the X11 Ultra) and it works over its USB cable only: its receiver isn't supported." : ""}${x.source === "drawing" ? " The picture is a drawing until Dorsal can reach that hub." : ""}`
       : x.source === "drawing" ? DRAWING_NOTE
       : "";

@@ -272,6 +272,14 @@ What was checked: all six run on the virtual mouse (`tools/virtual_mouse/checkup
 on, `dorsal_check.py` for the whole app). Stock stops showing the DPI color 3.1 s after a DPI press
 (dark on battery, on the cable it falls back to a steady cyan idle light), Dorsal
 firmware keeps it on past 8 s on the cable and on battery and follows 30 color changes in 30 s.
+
+What that LED is: each of the six has one small status LED. LAMZU's manuals say it goes steady ice blue
+when charged and blinks red when low, and the firmware shows the DPI stage color on it for 3 s after the
+DPI button (the same three pins, P0.14 / P0.15 / P0.16, do both). Where it sits is the part nobody here has
+seen lit: the Paro's is a slit at the front (its hub picture shows it lit, so Dorsal lights it on screen), a
+review of the Thorn V2 puts it under the logo at the back, and for the Maya X, Maya, Inca and Thorn the pictures
+don't show it, so Dorsal doesn't light their picture and can't say how much of it you see from above. The
+Tachi's shell has real cutouts, so on screen it glows through those.
 Every mouse but the R5 is flashed with the bytes its maker's own tool sends: LAMZU's web hub for the six LAMZU mice,
 Attack Shark's app for the M5 Ultra and R6. The two have the same update code (the hub's script and the
 `index-*.js` files inside the app's `app.asar`), and the R5's way, which Dorsal used for all of them until now,
