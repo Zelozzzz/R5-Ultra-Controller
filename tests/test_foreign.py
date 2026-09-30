@@ -5,8 +5,8 @@ import types
 
 import pytest
 
-from r5ultra import core, device, models
-from r5ultra import protocol as p
+from dorsal import core, device, models
+from dorsal import protocol as p
 
 
 class FakeClient:
@@ -71,9 +71,9 @@ class FakeHid:
 @pytest.fixture
 def fake_brand(monkeypatch, tmp_path):
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    mod = types.ModuleType("r5ultra.fakeproto")
+    mod = types.ModuleType("dorsal.fakeproto")
     mod.USAGE_PAGE, mod.USAGE, mod.Client = 0xFF42, 1, FakeClient
-    monkeypatch.setitem(sys.modules, "r5ultra.fakeproto", mod)
+    monkeypatch.setitem(sys.modules, "dorsal.fakeproto", mod)
     model = models.Model("fake-mouse", "Fake Mouse", 0x0001, 0x0002, None, "", None, competitive=False,
                          brand="Fake", vid=0x1234, protocol="fakeproto")
     monkeypatch.setattr(models, "MODELS", models.MODELS + (model,))

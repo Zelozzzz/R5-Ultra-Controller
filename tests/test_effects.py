@@ -3,8 +3,8 @@ import random
 
 import pytest
 
-from r5ultra import effects as fx
-from r5ultra.effects import EFFECTS, EffectContext, RainbowSettings
+from dorsal import effects as fx
+from dorsal.effects import EFFECTS, EffectContext, RainbowSettings
 
 
 def ctx(**kw):

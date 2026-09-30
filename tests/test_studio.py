@@ -4,8 +4,8 @@ import threading
 
 import pytest
 
-from r5ultra import config, macros, onboard
-from r5ultra.library import Library, profile_document, read_profile
+from dorsal import config, macros, onboard
+from dorsal.library import Library, profile_document, read_profile
 
 
 def test_macro_matches_native_encoder():
@@ -226,7 +226,7 @@ def test_library_write_failure_keeps_in_memory_state(tmp_path, monkeypatch):
     library = Library(tmp_path / "library.json")
     def fail(*_):
         raise OSError("Disk full")
-    monkeypatch.setattr("r5ultra.library.atomic_json", fail)
+    monkeypatch.setattr("dorsal.library.atomic_json", fail)
     with pytest.raises(OSError):
         library.save(macros.document("Test", []))
     assert library.items == []

@@ -1,6 +1,6 @@
 import pytest
 
-from r5ultra import config
+from dorsal import config
 
 
 # settings
@@ -35,7 +35,7 @@ def test_corrupt_settings_fall_back_to_defaults(tmp_path):
 
 
 def test_theme_defaults_to_ember_and_preserves_saved_choice(tmp_path):
-    from r5ultra import config
+    from dorsal import config
     assert config.with_defaults({})["theme"] == "ember"
     path = tmp_path / "config.json"
     config.save(config.with_defaults({"theme": "ocean"}), path)
@@ -43,7 +43,7 @@ def test_theme_defaults_to_ember_and_preserves_saved_choice(tmp_path):
 
 
 def test_unknown_theme_falls_back_to_the_default():
-    from r5ultra import theme
+    from dorsal import theme
     assert theme.get("ocean")["accent"] == theme.THEMES["ocean"]["accent"]
     assert theme.get("nonsense") is theme.THEMES[theme.DEFAULT]
     assert theme.get(None) is theme.THEMES[theme.DEFAULT]
@@ -126,7 +126,7 @@ class FakeRegistry:
 
 def test_a_startup_entry_from_before_the_rename_counts_and_can_be_switched_off(monkeypatch):
     import sys
-    from r5ultra import startup
+    from dorsal import startup
     reg = FakeRegistry({"R5UltraController": "old.exe --tray"})
     monkeypatch.setitem(sys.modules, "winreg", reg)
     assert startup.is_enabled()                          # Windows still starts it, so it says on

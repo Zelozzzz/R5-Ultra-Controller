@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from helpers import cables
 from intelhex import IntelHex
-from r5ultra import core, diagnostics, flasher, fw_install, models
-from r5ultra import firmware as fw
+from dorsal import core, diagnostics, flasher, fw_install, models
+from dorsal import firmware as fw
 
 from test_firmware import fake_stock
 
@@ -323,7 +323,7 @@ def test_the_installer_window_for_a_lamzu_asks_for_the_hex(tmp_path, monkeypatch
 
 
 def test_the_cli_can_build_a_lamzu(tmp_path, monkeypatch):
-    from r5ultra import cli
+    from dorsal import cli
     path = _write_stock(tmp_path, monkeypatch)
     out = tmp_path / "out.hex"
     args = cli.build_parser().parse_args(["firmware", "patch", str(path), "--model", "lamzu-tachi", "-o", str(out)])

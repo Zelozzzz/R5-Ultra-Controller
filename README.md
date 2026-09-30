@@ -2,12 +2,12 @@
 
 Control app for Attack Shark mice (R5 Ultra, M5 Ultra, R6 and R8), plus a small firmware patch that makes their LED actually stay on. Six LAMZU mice can get the same patch.
 
-[![tests](https://github.com/Zelozzzz/R5-Ultra-Controller/actions/workflows/tests.yml/badge.svg)](https://github.com/Zelozzzz/R5-Ultra-Controller/actions/workflows/tests.yml)
-[![release](https://img.shields.io/github/v/release/Zelozzzz/R5-Ultra-Controller)](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest)
+[![tests](https://github.com/Zelozzzz/dorsal/actions/workflows/tests.yml/badge.svg)](https://github.com/Zelozzzz/dorsal/actions/workflows/tests.yml)
+[![release](https://img.shields.io/github/v/release/Zelozzzz/dorsal)](https://github.com/Zelozzzz/dorsal/releases/latest)
 
 <img src="docs/screenshots/overview.webp" alt="A tour of Dorsal: home, buttons, macros, profiles, diagnostics and settings" width="900">
 
-**[Download Dorsal for Windows](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest/download/Dorsal-Setup.exe)**
+**[Download Dorsal for Windows](https://github.com/Zelozzzz/dorsal/releases/latest/download/Dorsal-Setup.exe)**
 
 ## why i made this
 
@@ -36,26 +36,26 @@ So I dug the USB protocol out of their app, found the one spot in the firmware t
 
 ## install
 
-1. [Download Dorsal-Setup.exe](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest/download/Dorsal-Setup.exe) and open it.
+1. [Download Dorsal-Setup.exe](https://github.com/Zelozzzz/dorsal/releases/latest/download/Dorsal-Setup.exe) and open it.
 2. Windows will probably say **"Windows protected your PC"**. That's only because the app isn't signed (signing costs money every year). Click **More info**, then **Run anyway**.
 3. Click **Install**, then **Finish**. It installs just for you, no admin needed, and Dorsal opens.
 4. Plug in the dongle. If the official Attack Shark app is open, close it (check the tray by the clock too), both can't talk to the mouse at once. Dorsal tells you if it's still running.
 
 That's it. For the LED to stay on you also need the firmware patch, see [installing the firmware](#installing-the-firmware).
 
-Don't want an installer? Grab the portable zip from [Releases](https://github.com/Zelozzzz/R5-Ultra-Controller/releases/latest), unzip it anywhere and run `Dorsal.exe`.
+Don't want an installer? Grab the portable zip from [Releases](https://github.com/Zelozzzz/dorsal/releases/latest), unzip it anywhere and run `Dorsal.exe`.
 
 Settings are saved in `%APPDATA%\Dorsal`. Uninstall from Windows Settings > Apps.
 
 ### trying a pre-release
 
 New versions go out as a pre-release first, so they can be tried before the update check offers them to everyone.
-The download button above stays on the last full release. To try one, open [Releases](https://github.com/Zelozzzz/R5-Ultra-Controller/releases),
+The download button above stays on the last full release. To try one, open [Releases](https://github.com/Zelozzzz/dorsal/releases),
 take the newest one marked pre-release and get `Dorsal-Setup.exe` from its files. It installs over what you have and keeps
 your settings, and a copy that's on a pre-release gets told about the next one.
 
 If you try Dorsal on a mouse that isn't an R5 Ultra, say how it went with the
-["I tried my mouse" issue form](https://github.com/Zelozzzz/R5-Ultra-Controller/issues/new/choose). It asks for the few
+["I tried my mouse" issue form](https://github.com/Zelozzzz/dorsal/issues/new/choose). It asks for the few
 things that matter, and it's the only way the other mice get marked as tried.
 
 ## screenshots
@@ -131,7 +131,7 @@ The mouse talks over 64-byte HID feature reports on a vendor interface. Attack S
 src/
   launch.pyw          starts the app (Dorsal.exe)
   dorsal_cli.py       command line (dorsal-cli.exe)
-  r5ultra/
+  dorsal/
     protocol.py       packets and reply parsing
     device.py         HID connection, acks, reading settings
     onboard.py        button assignments and macro slots
@@ -202,4 +202,4 @@ Tests: `pip install -r requirements-dev.txt`, then `python -m pyflakes src tests
 - The older Attack Shark X11's notes come from two MIT projects, [HolyJoey/attack-shark-x11](https://github.com/HolyJoey/attack-shark-x11) and [HarukaYamamoto0/attack-shark-x11-driver](https://github.com/HarukaYamamoto0/attack-shark-x11-driver). No code was copied, but the 320 DPI packets in `tests/data/` are from the second one.
 - Everything else: [Zelozzzz](https://github.com/Zelozzzz)
 
-Code is MIT. The mouse makers' firmware (Attack Shark's, LAMZU's) isn't included, Dorsal builds it from your own copy of their software or, for a LAMZU, from the file you take from its web hub. The mouse photo (`src/r5ultra/assets/r5ultra_top.png`) is Attack Shark's, it's only in here to show the mouse, and it's not covered by the MIT license. The other mice's photos aren't in the repo: Dorsal downloads each one from its brand's official web hub (xvalleyinno.top for most, controlhub.top for the F1 Air and X11 Ultra, szslxd-tech.com for the X11, shan.ipigame.cn for the Float 88; the same picture their own app shows) and keeps it in `%APPDATA%\Dorsal\device`. Nothing gets sent, and you can turn it off in Settings > About.
+Code is MIT. The mouse makers' firmware (Attack Shark's, LAMZU's) isn't included, Dorsal builds it from your own copy of their software or, for a LAMZU, from the file you take from its web hub. The mouse photo (`src/dorsal/assets/r5ultra_top.png`) is Attack Shark's, it's only in here to show the mouse, and it's not covered by the MIT license. The other mice's photos aren't in the repo: Dorsal downloads each one from its brand's official web hub (xvalleyinno.top for most, controlhub.top for the F1 Air and X11 Ultra, szslxd-tech.com for the X11, shan.ipigame.cn for the Float 88; the same picture their own app shows) and keeps it in `%APPDATA%\Dorsal\device`. Nothing gets sent, and you can turn it off in Settings > About.

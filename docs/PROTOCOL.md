@@ -4,7 +4,7 @@ How the Attack Shark R5 Ultra talks to a PC, as reverse-engineered from the
 official ATTACK SHARK GAMING app (an Electron app: `resources\app.asar` →
 `web/static/js/index-678780e8.js`, plus the `GetLightEffect` parser in
 `index-974f5527.js`). The code version of this document is
-[`src/r5ultra/protocol.py`](../src/r5ultra/protocol.py), and
+[`src/dorsal/protocol.py`](../src/dorsal/protocol.py), and
 [`tests/test_protocol.py`](../tests/test_protocol.py) pins every layout below.
 
 Names like `SetLightEffect` are the official app's function names where known.
@@ -126,7 +126,7 @@ answered with `0xA1`).
 ## Bootloader (firmware updates)
 
 Wired only. The dongle can't flash. See
-[`src/r5ultra/flasher.py`](../src/r5ultra/flasher.py).
+[`src/dorsal/flasher.py`](../src/dorsal/flasher.py).
 
 | Step | Bytes 2–6 | Notes |
 |---|---|---|

@@ -19,8 +19,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "src"))
 
-from r5ultra import firmware as fw  # noqa: E402
-from r5ultra import models  # noqa: E402
+from dorsal import firmware as fw  # noqa: E402
+from dorsal import models  # noqa: E402
 
 
 def hexnum(text):

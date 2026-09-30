@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from intelhex import IntelHex
 
-from r5ultra import firmware as fw
-from r5ultra import flasher, models
+from dorsal import firmware as fw
+from dorsal import flasher, models
 from test_firmware import fake_stock
 
 TACHI = models.by_key("lamzu-tachi")

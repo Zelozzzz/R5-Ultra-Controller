@@ -28,7 +28,7 @@ jobs:
       - name: Check release version
         shell: pwsh
         run: |
-          $version = python -c "import sys; sys.path.insert(0, 'src'); import r5ultra; print(r5ultra.__version__)"
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import dorsal; print(dorsal.__version__)"
           if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
             throw "Release tag must match package version v$version"
           }
@@ -38,7 +38,7 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          $version = python -c "import sys; sys.path.insert(0, 'src'); import r5ultra; print(r5ultra.__version__)"
+          $version = python -c "import sys; sys.path.insert(0, 'src'); import dorsal; print(dorsal.__version__)"
           iscc "/DAppVersion=$version" packaging\installer.iss
       - name: Write checksums
         shell: pwsh

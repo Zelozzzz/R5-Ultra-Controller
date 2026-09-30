@@ -16,11 +16,11 @@ It needs node, `intelhex` (like the rest of Dorsal), and the vendor's script, wh
   against was `index-BoyEW4Om.js`, 1,733,056 bytes, SHA-256
   `b42e18bdae39353ccce679193b09b4ca2edf99003f2ee8577e5c68407ac3818b`, saved on 2026-09-29
 - Attack Shark's app: the big `web/static/js/index-….js` inside `resources/app.asar`, the same 1.6 MB kind of file
-  (`fw.asar_read` in `src/r5ultra/firmware.py` reads a member out of an asar). The one used was
+  (`fw.asar_read` in `src/dorsal/firmware.py` reads a member out of an asar). The one used was
   `index-678780e8.js` from the June 2025 app
 
 and the firmware files: every `.hex` in `firmware/` (`--firmware` says another folder) that Dorsal knows and flashes the
-vendors' way, so the LAMZU ones from their hub (the names are in `HUB_FILES` in `src/r5ultra/firmware.py`) and the newer
+vendors' way, so the LAMZU ones from their hub (the names are in `HUB_FILES` in `src/dorsal/firmware.py`) and the newer
 M5 Ultra and R6 ones from Attack Shark's web hub, plus the M5 Ultra and R6 inside the installed official app
 (`--asar` says where it is). Anything that isn't there is skipped.
 

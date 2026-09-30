@@ -7,9 +7,9 @@ import struct
 import pytest
 from intelhex import IntelHex
 
-from r5ultra import firmware as fw
-from r5ultra import flasher
-from r5ultra import models
+from dorsal import firmware as fw
+from dorsal import flasher
+from dorsal import models
 
 
 def fake_stock(size=0x100) -> IntelHex:

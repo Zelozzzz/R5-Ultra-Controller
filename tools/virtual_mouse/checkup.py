@@ -53,10 +53,10 @@ sys.path[:0] = [str(REPO / "src"), str(HERE)]
 import fakehid                                    # noqa: E402
 import mice                                       # noqa: E402
 from vmouse import VirtualMouse                   # noqa: E402
-from r5ultra import device, macros, models        # noqa: E402
-from r5ultra import firmware as fw                # noqa: E402
-from r5ultra import protocol as p                 # noqa: E402
-from r5ultra.onboard import ACTIONS, Onboard, dpi_lock_binding, key_binding, macro_binding   # noqa: E402
+from dorsal import device, macros, models        # noqa: E402
+from dorsal import firmware as fw                # noqa: E402
+from dorsal import protocol as p                 # noqa: E402
+from dorsal.onboard import ACTIONS, Onboard, dpi_lock_binding, key_binding, macro_binding   # noqa: E402
 
 ASAR = Path(r"C:\ATTACK SHARK GAMING\resources\app.asar")
 RESULTS = HERE / "RESULTS.md"
@@ -568,7 +568,7 @@ def dorsal_packets(profile: int) -> list[bytes]:
         d = bytearray(64)
         d[2:6] = bytes((target, length, cat, cmd))
         out.append(bytes(d))
-    from r5ultra.onboard import button_packet, macro_packet
+    from dorsal.onboard import button_packet, macro_packet
     out += [button_packet(profile, b) for b in range(1, 6)]
     out += [macro_packet(slot, 2) for slot in (1, 2, 3)] + [macro_packet(1, 0x83, 0, size=50)]
     return out

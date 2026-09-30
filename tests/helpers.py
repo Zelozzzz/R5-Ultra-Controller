@@ -3,7 +3,7 @@
 import threading
 import time
 
-from r5ultra import firmware as fw
+from dorsal import firmware as fw
 from test_firmware import fake_stock
 
 

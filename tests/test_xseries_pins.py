@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from r5ultra import models
-from r5ultra import xseries as x
+from dorsal import models
+from dorsal import xseries as x
 
 CAPTURED = Path(__file__).parent / "data" / "x11_captured_packets.txt"     # the vendor's 320 DPI packets, as hex
 
@@ -417,7 +417,7 @@ class HidDevice:
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
-    from r5ultra import device
+    from dorsal import device
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     fake = x.FakeDevice()
@@ -440,7 +440,7 @@ def app(monkeypatch, tmp_path):
 
 def test_the_link_test_says_no_when_the_mouse_doesnt_answer(app):
     # kills DV08
-    from r5ultra import device
+    from dorsal import device
     app.unlock_status = 0
     ack, ms = device.ForeignMouse("xseries").ping()
     assert not ack.ok and ms is None
@@ -448,7 +448,7 @@ def test_the_link_test_says_no_when_the_mouse_doesnt_answer(app):
 
 def _fake_clock(monkeypatch, each_wait):
     """Time that only moves when the client waits: every wait takes `each_wait` seconds, whatever it asked for."""
-    from r5ultra import device
+    from dorsal import device
     now = [0.0]
     monkeypatch.setattr(x, "_sleep", lambda _s: now.__setitem__(0, now[0] + each_wait))
     monkeypatch.setattr(device.time, "perf_counter", lambda: now[0])
@@ -457,7 +457,7 @@ def _fake_clock(monkeypatch, each_wait):
 
 def test_the_waits_on_purpose_are_not_latency_and_latency_is_never_negative(app, monkeypatch):
     # kills DV04, DV06, DV07
-    from r5ultra import device
+    from dorsal import device
     ack, ms = device.ForeignMouse("xseries").ping()
     assert ack.ok and 0 <= ms < 50                                    # stubbed waits: the subtraction has to floor at 0
     app.stall = False                                                 # no retry gap in the way, only the settle wait
@@ -468,7 +468,7 @@ def test_the_waits_on_purpose_are_not_latency_and_latency_is_never_negative(app,
 
 
 def test_the_retry_gap_after_a_stalled_write_is_not_latency_either(app, monkeypatch):
-    from r5ultra import device
+    from dorsal import device
     monkeypatch.setattr(x, "SETTLE", 0.05)
     monkeypatch.setattr(x, "RETRY_GAP", 0.05)
     _fake_clock(monkeypatch, 0.05)                                    # the fake stalls the first write, like the cable does
@@ -478,7 +478,7 @@ def test_the_retry_gap_after_a_stalled_write_is_not_latency_either(app, monkeypa
 
 def test_the_x11_model_details_the_app_relies_on(app, tmp_path):
     # kills MD09, MD14, MD15, MD19, MD29, MD33, MD37, CM03
-    from r5ultra import core
+    from dorsal import core
     c = core.Controller()
     c.choose_model("x11")
     c.link_type = "USB cable"
@@ -500,7 +500,7 @@ def test_the_x11_model_details_the_app_relies_on(app, tmp_path):
 
 def test_switching_to_the_x11_fits_stage_dpis_polling_and_debounce_to_it(app):
     # kills AC019, AC021, AC037, AC042, AC044
-    from r5ultra import core
+    from dorsal import core
     c = core.Controller()                                     # starts as the R5 Ultra: 42000 DPI, 8000 Hz on a receiver, 0-20 ms
     c.stage_dpis = [42000, 850, 30000, 100, 20100, 25000]
     c.polling = "8000"
@@ -517,7 +517,7 @@ def test_switching_to_the_x11_fits_stage_dpis_polling_and_debounce_to_it(app):
 
 def test_an_asleep_x11_reads_as_nothing_not_as_a_crash(app):
     # kills AD115, AD121
-    from r5ultra import device
+    from dorsal import device
     app.unlock_status = 0
     s = device.ForeignMouse("xseries").read_settings(1)
     assert s.stage_dpis is None and s.polling is None and s.debounce is None and s.read_count()[0] == 0
@@ -525,7 +525,7 @@ def test_an_asleep_x11_reads_as_nothing_not_as_a_crash(app):
 
 def test_ping_measures_real_latency_and_subtracts_only_the_declared_wait(app, monkeypatch):
     # kills AD099, AD102, DV04, DV06: a 100 ms wait of which 50 ms are declared on purpose is 50 ms of latency
-    from r5ultra import device
+    from dorsal import device
     app.stall = False
     monkeypatch.setattr(x, "SETTLE", 0.05)
     _fake_clock(monkeypatch, 0.1)
@@ -537,7 +537,7 @@ def test_a_client_without_a_ping_of_its_own_is_pinged_through_its_battery_read(m
     # kills AD091, AD094: ForeignMouse.ping serves every other protocol too (compx, ipi), whose clients have no ping()
     import sys
     import types
-    from r5ultra import device
+    from dorsal import device
 
     class Client:
         answers = True
@@ -548,9 +548,9 @@ def test_a_client_without_a_ping_of_its_own_is_pinged_through_its_battery_read(m
         def read_battery(self):
             return 64 if Client.answers else None
 
-    mod = types.ModuleType("r5ultra.fakeproto")
+    mod = types.ModuleType("dorsal.fakeproto")
     mod.USAGE_PAGE, mod.USAGE, mod.Client = 0xFF42, 1, Client
-    monkeypatch.setitem(sys.modules, "r5ultra.fakeproto", mod)
+    monkeypatch.setitem(sys.modules, "dorsal.fakeproto", mod)
     model = models.Model("fake-mouse", "Fake Mouse", 0x0001, 0x0002, None, "", None, competitive=False, brand="Fake", vid=0x1234,
                          protocol="fakeproto")
     monkeypatch.setattr(models, "MODELS", models.MODELS + (model,))

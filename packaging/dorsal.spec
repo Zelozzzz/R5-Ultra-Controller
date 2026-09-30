@@ -16,15 +16,15 @@ BUILD = ROOT / "build" / "packaging"
 # device.protocol_module loads it by name at runtime, so PyInstaller can't see it. Without this line
 # the built app can't find those mice at all. It comes from the model list so a new one can't be forgotten
 sys.path.insert(0, str(ROOT / "src"))
-from r5ultra import models  # noqa: E402
-PROTOCOL_MODULES = sorted({f"r5ultra.{m.protocol}" for m in models.MODELS if m.protocol != "jxc"})
+from dorsal import models  # noqa: E402
+PROTOCOL_MODULES = sorted({f"dorsal.{m.protocol}" for m in models.MODELS if m.protocol != "jxc"})
 
 common = dict(
     pathex=[str(ROOT / "src")],
-    # the window is HTML/CSS (src/r5ultra/web) shown by WebView2 through pywebview
+    # the window is HTML/CSS (src/dorsal/web) shown by WebView2 through pywebview
     datas=collect_data_files("webview") + [
-        (str(ROOT / "docs"), "docs"), (str(ROOT / "src" / "r5ultra" / "web"), "r5ultra/web"),
-        (str(ROOT / "src" / "r5ultra" / "assets"), "r5ultra/assets")],
+        (str(ROOT / "docs"), "docs"), (str(ROOT / "src" / "dorsal" / "web"), "dorsal/web"),
+        (str(ROOT / "src" / "dorsal" / "assets"), "dorsal/assets")],
     # Chosen at runtime, so PyInstaller can't see them.
     hiddenimports=["pystray._win32", "webview.platforms.edgechromium", "webview.platforms.winforms", "clr",
                    *PROTOCOL_MODULES],

@@ -2,8 +2,8 @@ import threading
 
 import pytest
 
-from r5ultra import core, diagnostics as dg, protocol as p
-from r5ultra.device import MouseSettings
+from dorsal import core, diagnostics as dg, protocol as p
+from dorsal.device import MouseSettings
 
 
 @pytest.fixture

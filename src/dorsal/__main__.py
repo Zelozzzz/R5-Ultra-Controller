@@ -1,4 +1,4 @@
-"""Python -m r5ultra opens the app, python -m r5ultra <command> runs the command line."""
+"""python -m dorsal opens the app, python -m dorsal <command> runs the command line."""
 
 import sys
 

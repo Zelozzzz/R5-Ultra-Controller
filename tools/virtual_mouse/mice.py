@@ -22,7 +22,7 @@ class Firmware:
 
 @dataclass(frozen=True)
 class Mouse:
-    key: str                          # same key as src/r5ultra/models.py
+    key: str                          # same key as src/dorsal/models.py
     name: str
     stock_sha256: str                 # the exact firmware these facts were found in
     version: str                      # what the firmware reports

@@ -7,7 +7,7 @@ buffer. This does the copying and flag setting, lets the virtual mouse run a
 few milliseconds, and hands the buffer back as the reply.
 
     import fakehid
-    bridge = fakehid.install(fakehid.Bridge(vm, pid))   # then use r5ultra.device as normal
+    bridge = fakehid.install(fakehid.Bridge(vm, pid))   # then use dorsal.device as normal
 """
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ class Bridge:
 
 def install(bridge: Bridge):
     """Point Dorsal's device code at the bridge instead of real USB."""
-    from r5ultra import device
+    from dorsal import device
     device._hid = lambda: bridge
     device._hid_interface_paths = lambda: None
     device._found_cache = None

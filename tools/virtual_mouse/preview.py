@@ -29,8 +29,8 @@ import fakehid                                   # noqa: E402
 import mice                                      # noqa: E402
 from dorsal_check import ASAR, SETUP, connect, receiver_flags   # noqa: E402
 from vmouse import VirtualMouse                  # noqa: E402
-from r5ultra import config, device, models       # noqa: E402
-from r5ultra import firmware as fw               # noqa: E402
+from dorsal import config, device, models       # noqa: E402
+from dorsal import firmware as fw               # noqa: E402
 
 BRIDGE_JS = """<script>
 // stand-in for pywebview: api calls go to the preview server, state gets polled
@@ -43,7 +43,7 @@ setInterval(async () => { if (window.dorsal) window.dorsal.state(await (await fe
 class FakeWindow:
     """The bits of webui.WebUI the api uses."""
     def __init__(self, ctrl):
-        from r5ultra.webui import Site
+        from dorsal.webui import Site
         self.ctrl, self.site, self.page_ready, self.unsaved_macro = ctrl, Site(), False, False
 
     def state(self):
@@ -98,12 +98,12 @@ def main():
         config.save(cfg)
 
     # the page's "start with Windows" switch would write the real Run entry of whoever is running this
-    from r5ultra import startup
+    from dorsal import startup
     startup.is_enabled = lambda: False
     startup.set_enabled = lambda enabled: None
 
-    from r5ultra.core import Controller
-    from r5ultra.webui import Api
+    from dorsal.core import Controller
+    from dorsal.webui import Api
     ctrl = Controller()
     ctrl.check_updates = False
     ctrl.start()                               # like the app: connection polling, mouse pictures

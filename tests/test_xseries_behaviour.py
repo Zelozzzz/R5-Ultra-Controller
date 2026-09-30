@@ -5,7 +5,7 @@ literal bytes.)"""
 import pytest
 from test_xseries import app, client, no_waiting
 
-from r5ultra import xseries as x
+from dorsal import xseries as x
 
 FIXTURES = (app, no_waiting)         # they live in test_xseries.py and are used by name here
 
@@ -184,7 +184,7 @@ def test_two_clients_for_the_same_mouse_share_what_the_active_stage_was():
 
 
 def test_polling_the_stage_through_the_app_reads_the_mouse_once_not_every_time(app):
-    from r5ultra import device
+    from dorsal import device
 
     mouse = device.ForeignMouse("xseries")
     assert [mouse.read_active_stage(1) for _ in range(5)] == [2] * 5
@@ -204,7 +204,7 @@ def test_an_x11_that_was_only_detected_gets_nothing_written_until_its_owner_says
     at launch. It's per mouse now."""
     from helpers import settle, wait_idle
 
-    from r5ultra import core, models
+    from dorsal import core, models
     c = core.Controller()
     c.choose_model("r5ultra")                                    # an R5 owner, who picked it in setup once
     c._show_connection("USB cable")                              # and plugs in an X11
@@ -227,7 +227,7 @@ def test_an_x11_that_was_only_detected_gets_nothing_written_until_its_owner_says
 def test_a_setup_saved_on_the_x11_with_a_long_key_response_can_be_saved(app):
     from helpers import settle
 
-    from r5ultra import core, library
+    from dorsal import core, library
     c = core.Controller()
     c.choose_model("x11")
     c.set_setting("debounce", 30)
@@ -243,7 +243,7 @@ def test_what_the_x11_reports_is_shown_inside_the_editors_limits(app):
     they'll be written, not as something the next Apply silently changes."""
     from helpers import settle
 
-    from r5ultra import core
+    from dorsal import core
     app.reports[x.DPI][8], app.reports[x.DPI][16] = x._TABLE[0], 0            # stage 1 = 50 DPI
     x.seal_dpi(app.reports[x.DPI])
     app.reports[x.LIGHT][10] = 1                                              # key response 2 ms
@@ -261,7 +261,7 @@ def test_what_the_x11_reports_is_shown_inside_the_editors_limits(app):
 def test_apply_on_the_x11_says_what_was_verified_and_the_health_check_doesnt_ask_for_what_it_hasnt_got(app):
     from helpers import settle, wait_idle
 
-    from r5ultra import core
+    from dorsal import core
     c = core.Controller()
     c.choose_model("x11")
     c.connected, c.link_type = True, "USB cable"

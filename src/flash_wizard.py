@@ -5,6 +5,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from r5ultra.wizard import run  # noqa: E402
+from dorsal.wizard import run  # noqa: E402
 
 run()

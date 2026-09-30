@@ -32,8 +32,8 @@ sys.path[:0] = [str(REPO / "src"), str(HERE)]
 import fakehid                                    # noqa: E402
 import mice                                       # noqa: E402
 from vmouse import VirtualMouse                   # noqa: E402
-from r5ultra import firmware as fw                # noqa: E402
-from r5ultra import protocol as p                 # noqa: E402
+from dorsal import firmware as fw                # noqa: E402
+from dorsal import protocol as p                 # noqa: E402
 
 ASAR = Path(r"C:\ATTACK SHARK GAMING\resources\app.asar")
 MOUSE = mice.by_key("r5ultra")

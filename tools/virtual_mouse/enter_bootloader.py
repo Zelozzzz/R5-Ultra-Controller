@@ -25,8 +25,8 @@ sys.path[:0] = [str(REPO / "src"), str(HERE)]
 import fakehid                                    # noqa: E402
 import mice                                       # noqa: E402
 from vmouse import VirtualMouse                   # noqa: E402
-from r5ultra import firmware as fw                # noqa: E402
-from r5ultra import flasher, models               # noqa: E402
+from dorsal import firmware as fw                # noqa: E402
+from dorsal import flasher, models               # noqa: E402
 
 ASAR = Path(r"C:\ATTACK SHARK GAMING\resources\app.asar")
 BYTES = (flasher.VENDOR_DEVICE_ID, flasher.DEVICE_ID, 1, 0xFF)   # the vendors' tools', the R5's, and two nobody sends

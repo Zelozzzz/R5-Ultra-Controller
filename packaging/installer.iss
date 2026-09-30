@@ -18,8 +18,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Zelozzzz
-AppPublisherURL=https://github.com/Zelozzzz/R5-Ultra-Controller
-AppSupportURL=https://github.com/Zelozzzz/R5-Ultra-Controller/issues
+AppPublisherURL=https://github.com/Zelozzzz/dorsal
+AppSupportURL=https://github.com/Zelozzzz/dorsal/issues
 ; Per-user install: no admin prompt, no questions. The only page is the
 ; shortcut/startup choice, then it installs and offers to open Dorsal.
 PrivilegesRequired=lowest

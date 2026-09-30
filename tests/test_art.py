@@ -6,8 +6,8 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageStat
 
-from r5ultra import device_image, models
-from r5ultra.scenery import mouse_layers
+from dorsal import device_image, models
+from dorsal.scenery import mouse_layers
 
 W, H = 200, 320
 CYAN = (0, 213, 255, 255)

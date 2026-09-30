@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from helpers import cables, register, variant
 
-from r5ultra import config, core, flasher, models, webui, wizard
-from r5ultra import firmware as fw
-from r5ultra import fw_install
+from dorsal import config, core, flasher, models, webui, wizard
+from dorsal import firmware as fw
+from dorsal import fw_install
 
 TACHI = models.by_key("lamzu-tachi")
 INCA = models.by_key("lamzu-inca")

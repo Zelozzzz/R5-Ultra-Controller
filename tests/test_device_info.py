@@ -4,8 +4,8 @@ captured from an R5 Ultra dongle; the 0xA1 layouts follow the official app."""
 
 import pytest
 
-from r5ultra import device
-from r5ultra import protocol as p
+from dorsal import device
+from dorsal import protocol as p
 
 
 def reply(status, request: bytes, *payload: int) -> bytes:
@@ -202,7 +202,7 @@ def test_reads_ignore_replies_to_other_commands(fake_mouse):
 
 
 def test_device_search_only_reruns_when_the_device_list_changes(monkeypatch):
-    from r5ultra import device
+    from dorsal import device
     listing = {"paths": frozenset({"hid#vid_373e&pid_0047&mi_02"})}
     searches = []
     monkeypatch.setattr(device, "_hid_interface_paths", lambda: listing["paths"])

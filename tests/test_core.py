@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from r5ultra import core, protocol as p
+from dorsal import core, protocol as p
 
 
 @pytest.fixture
@@ -209,7 +209,7 @@ def test_fewer_dpi_stages(ctrl, monkeypatch):
 
 
 def test_stage_count_follows_what_the_mouse_says(ctrl):
-    from r5ultra.device import MouseSettings
+    from dorsal.device import MouseSettings
     ctrl.stage_dpis = [400, 800, 1600, 3200, 6400, 12800]
     ctrl._fill_from_settings(MouseSettings(stage_dpis=[(1000, 1000), (2000, 2000), (3000, 3000)]))
     assert ctrl.stage_count == 3
@@ -218,7 +218,7 @@ def test_stage_count_follows_what_the_mouse_says(ctrl):
 
 
 def test_sensor_decides_lift_off_and_competitive(ctrl):
-    from r5ultra import models
+    from dorsal import models
     assert ctrl.snapshot()["lod_values"] == ["0.7 mm", "1 mm", "2 mm"] and ctrl.competitive_supported
     ctrl.sensor = 1                                   # a PAW3395, like the official app handles it
     assert ctrl.snapshot()["lod_values"] == ["1 mm", "2 mm"] and not ctrl.competitive_supported
@@ -260,7 +260,7 @@ def test_a_saved_profile_with_0_7_mm_on_a_3395_mouse(ctrl):
 
 
 def test_r6_gets_competitive_mode_from_firmware_0_0_3_1(ctrl):
-    from r5ultra import models
+    from dorsal import models
     ctrl.model, ctrl.sensor = models.R6, 2
     ctrl.firmware = None
     assert not ctrl.competitive_supported               # not read yet: hidden

@@ -7,7 +7,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Windows Raw Inp
 
 
 def test_listener_starts_stops_and_restarts():
-    from r5ultra.rawinput import RawMouseListener
+    from dorsal.rawinput import RawMouseListener
     listener = RawMouseListener(lambda *_: None)
     for _ in range(2):
         try:
@@ -23,7 +23,7 @@ def test_listener_starts_stops_and_restarts():
 
 def test_raw_mouse_structure_matches_windows_abi():
     import ctypes
-    from r5ultra.rawinput import RAWMOUSE, RAWINPUTHEADER
+    from dorsal.rawinput import RAWMOUSE, RAWINPUTHEADER
     assert ctypes.sizeof(RAWMOUSE) == 24
     assert RAWMOUSE.lLastX.offset == 12
     assert RAWMOUSE.lLastY.offset == 16

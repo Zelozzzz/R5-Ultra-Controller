@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from r5ultra import updates
+from dorsal import updates
 
 
 def test_versions_compare_as_numbers():
@@ -16,8 +16,8 @@ def test_versions_compare_as_numbers():
 
 
 def test_api_address_comes_from_the_repo():
-    assert updates.API == "https://api.github.com/repos/Zelozzzz/R5-Ultra-Controller/releases/latest"
-    assert updates.RELEASES == "https://api.github.com/repos/Zelozzzz/R5-Ultra-Controller/releases"
+    assert updates.API == "https://api.github.com/repos/Zelozzzz/dorsal/releases/latest"
+    assert updates.RELEASES == "https://api.github.com/repos/Zelozzzz/dorsal/releases"
 
 
 # a pretend github: what each address answers, and which ones got asked
@@ -43,7 +43,7 @@ def _github(monkeypatch, answers: dict):
 
 
 def _rel(tag, pre=False, draft=False):
-    return {"tag_name": tag, "html_url": f"https://github.com/Zelozzzz/R5-Ultra-Controller/releases/tag/{tag}",
+    return {"tag_name": tag, "html_url": f"https://github.com/Zelozzzz/dorsal/releases/tag/{tag}",
             "prerelease": pre, "draft": draft}
 
 
@@ -53,7 +53,7 @@ ALL = updates.RELEASES + "?per_page=10"
 def test_someone_on_the_normal_release_only_hears_about_the_next_normal_one(monkeypatch):
     asked = _github(monkeypatch, {updates.API: _rel("v1.9"), ALL: [_rel("v1.11", pre=True), _rel("v1.9")]})
     found = updates.check(local="1.9")
-    assert found == {"version": "1.9", "url": "https://github.com/Zelozzzz/R5-Ultra-Controller/releases/tag/v1.9",
+    assert found == {"version": "1.9", "url": "https://github.com/Zelozzzz/dorsal/releases/tag/v1.9",
                      "prerelease": False}
     assert asked == [updates.API]                    # pre-releases aren't even looked at
     asked.clear()

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The repo is `Zelozzzz/dorsal` now, and the Python package inside is `dorsal` (it was `r5ultra`, from when this was
+  an R5 Ultra tool). Old links to the repo keep working, GitHub forwards them. Nothing changes for settings: the R5's
+  key in them is still `r5ultra`.
 - A copy that's on a pre-release gets told about the next pre-release. Before, the update check only asked GitHub for
   the release everyone gets, so a 1.10 copy was told it was the newest and a 1.11 one would never hear about 1.12.
   A copy on the normal release still only hears about the next normal one.

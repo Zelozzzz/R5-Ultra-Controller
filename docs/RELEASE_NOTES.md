@@ -31,7 +31,7 @@ Dorsal isn't just for the R5 Ultra anymore, and the firmware installer double-ch
 
 **Read this first:** only the R5 Ultra has been tried on a real mouse. Everything else ran on a virtual mouse that runs the
 real firmware, which is good but not the same thing. Flashing can brick a mouse and there's no official recovery tool.
-[docs/MICE.md](https://github.com/Zelozzzz/R5-Ultra-Controller/blob/main/docs/MICE.md) lists what's been tried. If you try
+[docs/MICE.md](https://github.com/Zelozzzz/dorsal/blob/main/docs/MICE.md) lists what's been tried. If you try
 one of the others, there's an issue form for saying how it went.
 
 **Also**

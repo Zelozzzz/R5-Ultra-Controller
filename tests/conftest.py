@@ -19,7 +19,7 @@ def _no_real_usb(monkeypatch):
     no hidapi at all. The flasher is what writes firmware, so a test that gets as far as it without giving it a
     pretend hid fails outright. Everything else sees a PC with no mice. A test that means to use a pretend hid
     patches these again."""
-    from r5ultra import device, flasher
+    from dorsal import device, flasher
 
     def refuse():
         raise AssertionError("this test reached the real USB bus, give the flasher a fake hid")

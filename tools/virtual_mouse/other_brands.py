@@ -38,8 +38,8 @@ import checkup                                     # noqa: E402
 import mice                                        # noqa: E402
 from unicorn import UC_HOOK_MEM_READ               # noqa: E402
 from unicorn.arm_const import UC_ARM_REG_SP       # noqa: E402
-from r5ultra import firmware as fw                 # noqa: E402
-from r5ultra import protocol as p                  # noqa: E402
+from dorsal import firmware as fw                 # noqa: E402
+from dorsal import protocol as p                  # noqa: E402
 
 # what the file name starts with, and the mouse in models.py. The other WLMOUSE firmware (Beast G, X V2, Huan) is for
 # nRF54 chips, which the virtual mouse can't run
@@ -235,8 +235,8 @@ def probe(key: str, path: Path, verbose: bool, junk: int = 400) -> list[dict]:
 
     r.start("the app, Dorsal's own code")
     import dorsal_check as dc                      # its waiting helper
-    from r5ultra import device
-    from r5ultra.core import Controller
+    from dorsal import device
+    from dorsal.core import Controller
     rig.fresh()
     ctrl = Controller()
     ctrl.check_updates = False

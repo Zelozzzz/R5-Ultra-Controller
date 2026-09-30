@@ -11,8 +11,8 @@ BUILD = ROOT / "build" / "packaging"
 DIST = ROOT / "dist"
 sys.path.insert(0, str(ROOT / "src"))
 
-from r5ultra import APP_NAME, APP_TAGLINE, __version__  # noqa: E402
-from r5ultra.art import app_icon  # noqa: E402
+from dorsal import APP_NAME, APP_TAGLINE, __version__  # noqa: E402
+from dorsal.art import app_icon  # noqa: E402
 
 PUBLISHER = "Zelozzzz"
 

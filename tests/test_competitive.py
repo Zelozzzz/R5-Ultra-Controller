@@ -1,8 +1,8 @@
 """Vendor sensor-mode packets, confirmation and controller state, without HID."""
 import pytest
 
-from r5ultra import core, protocol as p
-from r5ultra.device import R5Mouse
+from dorsal import core, protocol as p
+from dorsal.device import R5Mouse
 
 
 @pytest.fixture
@@ -10,7 +10,7 @@ def mouse(monkeypatch):
     m = R5Mouse()
     monkeypatch.setattr(R5Mouse, "__enter__", lambda self: self)
     monkeypatch.setattr(R5Mouse, "__exit__", lambda *args: None)
-    monkeypatch.setattr("r5ultra.device.time.sleep", lambda _: None)
+    monkeypatch.setattr("dorsal.device.time.sleep", lambda _: None)
     return m
 
 

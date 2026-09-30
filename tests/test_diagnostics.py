@@ -1,6 +1,6 @@
 import pytest
 
-from r5ultra import diagnostics as dg
+from dorsal import diagnostics as dg
 
 
 def feed_steady(meter, hz, seconds, start=0.0):
@@ -87,7 +87,7 @@ class FakePinger:
         self.pattern = pattern
 
     def ping(self, n):
-        from r5ultra import protocol as p
+        from dorsal import protocol as p
         kind = self.pattern[n % len(self.pattern)]
         return (p.Ack(p.ACCEPTED), 3.0) if kind == "ok" else (p.Ack(p.NO_MOUSE), None)
 
@@ -136,7 +136,7 @@ def test_polling_average_does_not_hide_slow_windows():
 
 
 def test_describe_packet_names_what_the_app_sends():
-    from r5ultra import protocol as p
+    from dorsal import protocol as p
     assert dg.describe_packet(p.get_battery()) == "Get battery"
     assert dg.describe_packet(p.lightness(2, 50)) == "Set brightness"
     assert dg.describe_packet(p.light_effect(1, p.MODE_STATIC, 0, (1, 2, 3))) == "Set light effect"
@@ -152,7 +152,7 @@ def test_reply_status_and_hex():
 
 
 def test_mouse_keeps_a_trace_of_exchanges():
-    from r5ultra import device, protocol as p
+    from dorsal import device, protocol as p
 
     class Hid:
         def send_feature_report(self, data): self.last = bytes(data[1:])

@@ -3,8 +3,8 @@ Byte examples are the ones worked out from Attack Shark's MOUSE HUB code."""
 import pytest
 from helpers import wait_idle
 
-from r5ultra import compx, core, device, models
-from r5ultra import protocol as p
+from dorsal import compx, core, device, models
+from dorsal import protocol as p
 
 
 def client(dev):
@@ -321,7 +321,7 @@ def test_no_animated_effects_and_its_own_lift_off_heights(f1):
 
 def test_the_picture_gets_its_led_window_where_the_real_one_is():
     from PIL import Image, ImageDraw
-    from r5ultra.scenery import mouse_layers
+    from dorsal.scenery import mouse_layers
     photo = Image.new("RGBA", (300, 560), (0, 0, 0, 0))
     ImageDraw.Draw(photo).ellipse((0, 0, 299, 559), fill=(240, 240, 240, 255))   # a plain white shell, like the hub's render
     plain = mouse_layers(photo, 260, 420)
@@ -476,7 +476,7 @@ def test_settings_a_hub_mouse_doesnt_have_are_not_counted_as_missed(monkeypatch,
     s = c.mouse.read_settings(1)
     got, total = s.read_count()
     assert got == total, (got, total, s)
-    from r5ultra import diagnostics as dg
+    from dorsal import diagnostics as dg
     rows = dg.settings_evidence(s, {})
     assert "competitive" not in [r["key"] for r in rows] and all(r["status"] != "unavailable" for r in rows)
 

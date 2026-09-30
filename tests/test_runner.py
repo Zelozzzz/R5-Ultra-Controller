@@ -1,9 +1,9 @@
 import threading
 import time
 
-from r5ultra import protocol as p
-from r5ultra.effects import EffectContext
-from r5ultra.runner import EffectRunner
+from dorsal import protocol as p
+from dorsal.effects import EffectContext
+from dorsal.runner import EffectRunner
 
 
 class FakeMouse:

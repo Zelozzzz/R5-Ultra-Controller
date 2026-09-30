@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from helpers import settle
 
-from r5ultra import models
-from r5ultra import xseries as x
+from dorsal import models
+from dorsal import xseries as x
 
 DATA = Path(__file__).parent / "data" / "x11_captured_dpi.txt"
 
@@ -338,7 +338,7 @@ class HidDevice:
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
-    from r5ultra import device
+    from dorsal import device
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     fake = x.FakeDevice()
@@ -369,7 +369,7 @@ def app(monkeypatch, tmp_path):
 
 
 def test_the_device_layer_finds_the_settings_collection_and_tells_the_client_its_on_the_cable(app):
-    from r5ultra import device
+    from dorsal import device
 
     mouse = device.ForeignMouse("xseries")
     s = mouse.read_settings(1)
@@ -385,7 +385,7 @@ def test_the_device_layer_finds_the_settings_collection_and_tells_the_client_its
 
 
 def test_the_x11_is_only_looked_for_on_its_cable(app):
-    from r5ultra import device
+    from dorsal import device
 
     assert models.X11.pids == (0xFA55,) and models.X11.dongle_pid is None
     assert models.by_ids(0x1D57, 0xFA60) is None                                       # the receiver belongs to nobody here
@@ -393,7 +393,7 @@ def test_the_x11_is_only_looked_for_on_its_cable(app):
 
 
 def test_the_app_shows_the_x11_with_only_what_it_has(app):
-    from r5ultra import core
+    from dorsal import core
 
     c = core.Controller()
     c.choose_model("x11")
@@ -411,7 +411,7 @@ def test_the_app_shows_the_x11_with_only_what_it_has(app):
 
 
 def test_apply_writes_what_the_x11_has_and_reads_it_back(app):
-    from r5ultra import core
+    from dorsal import core
 
     c = core.Controller()
     c.choose_model("x11")

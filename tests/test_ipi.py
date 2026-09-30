@@ -7,7 +7,7 @@ send exactly what IPI's app sends."""
 import pytest
 from helpers import wait_idle
 
-from r5ultra import ipi
+from dorsal import ipi
 
 
 def frame(h: str) -> bytes:
@@ -738,7 +738,7 @@ class HidDevice:
 
 @pytest.fixture
 def foreign(monkeypatch):
-    from r5ultra import device
+    from dorsal import device
 
     fake = ipi.FakeDevice(wired=True)
 
@@ -764,7 +764,7 @@ def test_foreign_mouse_reads(foreign):
 
 
 def test_foreign_mouse_writes(foreign):
-    from r5ultra import protocol as p
+    from dorsal import protocol as p
 
     assert foreign.command(p.stage_dpis(1, [(800, 800), (1600, 1600), (3200, 3200)])).ok
     assert foreign.read_stage_dpis(1) == [(800, 800), (1600, 1600), (3200, 3200)]
@@ -782,7 +782,7 @@ def test_foreign_mouse_writes(foreign):
 
 @pytest.fixture
 def app(monkeypatch, tmp_path):
-    from r5ultra import device
+    from dorsal import device
 
     monkeypatch.setenv("APPDATA", str(tmp_path))
     fake = ipi.FakeDevice(wired=True)
@@ -799,7 +799,7 @@ def app(monkeypatch, tmp_path):
 
 
 def test_the_app_shows_the_float_88_with_its_own_limits_and_no_animated_effects(app):
-    from r5ultra import core, models
+    from dorsal import core, models
 
     c = core.Controller()
     c.choose_model("ipi-float-88")
@@ -813,8 +813,8 @@ def test_the_app_shows_the_float_88_with_its_own_limits_and_no_animated_effects(
 
 
 def test_the_app_reads_and_writes_a_float_88(app):
-    from r5ultra import core
-    from r5ultra import protocol as p
+    from dorsal import core
+    from dorsal import protocol as p
 
     c = core.Controller()
     c.choose_model("ipi-float-88")
@@ -831,7 +831,7 @@ def test_the_app_reads_and_writes_a_float_88(app):
 
 
 def test_a_first_apply_on_a_float_88_is_verified_and_there_is_no_sleep_timer_to_set(app):
-    from r5ultra import core
+    from dorsal import core
 
     c = core.Controller()
     c.choose_model("ipi-float-88")
@@ -849,7 +849,7 @@ def test_a_first_apply_on_a_float_88_is_verified_and_there_is_no_sleep_timer_to_
 def test_the_client_is_told_cable_or_receiver_because_the_real_device_cant_say(foreign):
     # hidapi's device has no pid, so ForeignMouse has to hand the connection over. Without it 2000-8000 Hz
     # were refused, the firmware never read and a receiver was asked the cable's identity question
-    from r5ultra import protocol as p
+    from dorsal import protocol as p
 
     assert not hasattr(foreign._dev, "pid") if foreign._dev else True
     assert foreign.command(p.polling_rate(1, 128)).ok              # 8000 Hz, written the cable way
@@ -859,8 +859,8 @@ def test_the_client_is_told_cable_or_receiver_because_the_real_device_cant_say(f
 
 
 def test_over_a_receiver_it_asks_the_receiver_question_and_writes_the_receiver_way(monkeypatch):
-    from r5ultra import device
-    from r5ultra import protocol as p
+    from dorsal import device
+    from dorsal import protocol as p
 
     fake = ipi.FakeDevice(wired=False)
 
@@ -879,7 +879,7 @@ def test_over_a_receiver_it_asks_the_receiver_question_and_writes_the_receiver_w
 
 def test_switching_to_the_float_88_stops_an_effect_from_another_mouse(app):
     # an effect still running from the last mouse would rewrite the Float 88's settings table every frame
-    from r5ultra import core
+    from dorsal import core
 
     c = core.Controller()
     stops = []
@@ -892,7 +892,7 @@ def test_switching_to_the_float_88_stops_an_effect_from_another_mouse(app):
 
 
 def test_apply_on_a_float_88_leaves_nothing_pending(app):
-    from r5ultra import core
+    from dorsal import core
 
     c = core.Controller()
     c.choose_model("ipi-float-88")

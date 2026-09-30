@@ -1,4 +1,4 @@
-from r5ultra import winapp
+from dorsal import winapp
 
 
 def test_normal_settings_folder_keeps_the_installer_names():

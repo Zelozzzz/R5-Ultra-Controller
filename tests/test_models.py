@@ -1,4 +1,4 @@
-from r5ultra import compx, core, device, models
+from dorsal import compx, core, device, models
 
 
 def test_every_usb_id_belongs_to_one_mouse():
@@ -60,7 +60,7 @@ def test_the_nrf54_lamzu_mice_only_get_the_sleep_times_their_hub_lists():
     nrf54 = ["lamzu-thorn-v2-54h20-0030", "lamzu-thorn-v2-54h20-0040", "lamzu-orcus", "lamzu-maya-x-lm20", "lamzu-mini-lm20",
              "lamzu-maya-m-lm20", "lamzu-maya-lm20", "lamzu-orcus-v2-lm20"]
     assert [m.key for m in models.MODELS if m.sleep_minutes == models.NRF54_SLEEP] == nrf54
-    from r5ultra import protocol
+    from dorsal import protocol
     assert set(models.NRF54_SLEEP) <= set(protocol.SLEEP_CHOICES)
     for key in ("lamzu-tachi", "lamzu-maya-m-54h20", "lamzu-atlantis", "wlmouse-beast-x"):
         assert models.by_key(key).sleep_minutes is None                 # everything Dorsal has

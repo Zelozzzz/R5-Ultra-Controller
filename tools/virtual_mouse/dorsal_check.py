@@ -29,12 +29,12 @@ sys.path[:0] = [str(REPO / "src"), str(HERE)]
 import fakehid                                    # noqa: E402
 import mice                                       # noqa: E402
 from vmouse import VirtualMouse                   # noqa: E402
-from r5ultra import config, device, models        # noqa: E402
-from r5ultra import diagnostics as dg             # noqa: E402
-from r5ultra import firmware as fw                # noqa: E402
-from r5ultra.effects import dim                   # noqa: E402
-from r5ultra import fw_install, wizard            # noqa: E402
-from r5ultra.protocol import hex_to_rgb as p_rgb   # noqa: E402
+from dorsal import config, device, models        # noqa: E402
+from dorsal import diagnostics as dg             # noqa: E402
+from dorsal import firmware as fw                # noqa: E402
+from dorsal.effects import dim                   # noqa: E402
+from dorsal import fw_install, wizard            # noqa: E402
+from dorsal.protocol import hex_to_rgb as p_rgb   # noqa: E402
 
 ASAR = Path(r"C:\ATTACK SHARK GAMING\resources\app.asar")
 SETUP = {m.key: mice.setup(m) for m in mice.MICE}   # how to hold each mouse, see mice.py
@@ -106,7 +106,7 @@ def run_one(model: models.Model, image: bytes, base: int, patched: bool) -> Chec
     bridge = fakehid.install(fakehid.Bridge(vm, model.dongle_pid, before_command=link_up, vid=model.vid))
     sys.modules["hid"] = bridge       # fw_install imports hid directly
 
-    from r5ultra.core import Controller
+    from dorsal.core import Controller
     ctrl = Controller()
     ctrl.check_updates = False
     ctrl._show_connection(device.connection_type())

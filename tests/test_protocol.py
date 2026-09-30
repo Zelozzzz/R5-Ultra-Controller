@@ -3,7 +3,7 @@ cases, byte-identical) before v1 was retired, so they pin the wire format."""
 
 import pytest
 
-from r5ultra import protocol as p
+from dorsal import protocol as p
 
 
 def packet(*head: int) -> bytes:

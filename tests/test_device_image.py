@@ -6,7 +6,7 @@ import io
 import pytest
 from PIL import Image, ImageDraw
 
-from r5ultra import device_image
+from dorsal import device_image
 from test_firmware import make_asar
 
 
@@ -72,7 +72,7 @@ def test_load_uses_the_bundled_photo_when_nothing_else_is_there(monkeypatch, tmp
 
 
 def test_each_mouse_gets_its_own_photo_from_the_official_app(tmp_path, monkeypatch):
-    from r5ultra import models
+    from dorsal import models
     asar = tmp_path / "app.asar"
     asar.write_bytes(make_asar({device_image.member(models.M5_ULTRA): png_bytes(fake_top_view()), "main.js": b"x"}))
     monkeypatch.setattr(device_image, "find_official_app", lambda: asar)
@@ -103,7 +103,7 @@ class _Reply(io.BytesIO):
 
 
 def test_every_mouse_knows_where_its_picture_is():
-    from r5ultra import models
+    from dorsal import models
     for m in models.MODELS:
         if not m.photo or m.photo.startswith("https://"):      # (no picture yet: the app draws one)
             continue
@@ -113,7 +113,7 @@ def test_every_mouse_knows_where_its_picture_is():
 
 
 def test_download_saves_the_hub_picture_and_moves_the_version(monkeypatch):
-    from r5ultra import models
+    from dorsal import models
     import urllib.request
     wl = models.by_key("wlmouse-beast-x")
     asked = []
@@ -127,7 +127,7 @@ def test_download_saves_the_hub_picture_and_moves_the_version(monkeypatch):
 
 
 def test_download_refuses_the_hubs_web_page(monkeypatch):
-    from r5ultra import models
+    from dorsal import models
     import urllib.request
     monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout: _Reply(b"<!DOCTYPE html><html>not a picture"))
     lamzu = models.by_key("lamzu-maya")
@@ -145,7 +145,7 @@ def test_a_wide_mouse_like_the_orcus_still_counts_as_a_top_view(tmp_path):
 
 
 def test_the_controller_only_downloads_once_the_app_has_started(tmp_path, monkeypatch):
-    from r5ultra import core
+    from dorsal import core
     import urllib.request
     monkeypatch.setenv("APPDATA", str(tmp_path))
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("no network in a plain Controller()"))
@@ -156,7 +156,7 @@ def test_the_controller_only_downloads_once_the_app_has_started(tmp_path, monkey
 
 
 def _started_controller(tmp_path, monkeypatch):
-    from r5ultra import core
+    from dorsal import core
     monkeypatch.setenv("APPDATA", str(tmp_path))
     c = core.Controller()
     c._started = True                        # as if the app is running, so downloads are allowed
@@ -174,7 +174,7 @@ def _wait_for_photo_jobs(c):
 
 def test_the_first_run_picker_downloads_nothing_and_only_shows_pictures_already_here(tmp_path, monkeypatch):
     import urllib.request
-    from r5ultra import models
+    from dorsal import models
     c = _started_controller(tmp_path, monkeypatch)
     asked = []                                              # (a failure inside a download thread wouldn't fail the test)
     monkeypatch.setattr(device_image, "download", lambda m: asked.append(m.key))

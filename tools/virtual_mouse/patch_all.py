@@ -30,7 +30,7 @@ sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(HERE))
 
 from intelhex import IntelHex         # noqa: E402
-from r5ultra import firmware as fw    # noqa: E402
+from dorsal import firmware as fw    # noqa: E402
 from vmouse import VirtualMouse       # noqa: E402
 
 DEFAULT_ASAR = Path(r"C:\ATTACK SHARK GAMING\resources\app.asar")

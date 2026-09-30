@@ -5,8 +5,8 @@ import importlib.util
 import pytest
 from helpers import register, variant
 
-from r5ultra import cli, flasher, models, wizard
-from r5ultra import firmware as fw
+from dorsal import cli, flasher, models, wizard
+from dorsal import firmware as fw
 
 TACHI = models.by_key("lamzu-tachi")
 R5 = models.R5_ULTRA
