@@ -12,6 +12,14 @@
   as before. Still nobody has flashed a real LAMZU, M5 or R6.
   `tools/virtual_mouse/enter_bootloader.py` shows the real firmware of all nine mice restarts on the
   enter-bootloader command whatever byte 2 is.
+- The eight LAMZU mice with an nRF54 chip (54H20 and LM20 ones) only get the sleep times their hub lists, 1, 5 and 10
+  minutes of Dorsal's, not its 2 and 30 minutes and never. The ones that can be run take all of them, so they keep them.
+- More checks, all local: `tools/vendor_check/check_models.py` compares the mouse table with the hubs' own configs (371 things
+  on 49 mice, no difference), `tools/firmware_check` runs every known firmware image through the real flasher into a pretend
+  chip (11 images, stock and patched, all pass), and `tools/virtual_mouse/other_brands.py` runs the nine WLMOUSE Beast firmware
+  files the virtual mouse can run and checks Dorsal's table for them against it (they all pass). It also found that those
+  mice do have a DPI light, a LED that breathes for under a second after a DPI change, and that a one-byte change keeps it lit
+  on the virtual mouse. Nothing in Dorsal uses that.
 
 ## 1.10
 

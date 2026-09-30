@@ -63,6 +63,10 @@ python tools/virtual_mouse/checkup.py --only led settings # some groups
 - `enter_bootloader.py` sends each firmware the "enter the bootloader" command with different values in byte 2
   (the R5's way puts 2 there, the vendors' own tools 0) and checks it restarts itself the same each time, and not without
   the command. It only sees the app firmware's side, the bootloader isn't in the .hex
+- `other_brands.py` runs the WLMOUSE Beast firmware (the nRF52840 ones, from WLMOUSE's web hub, they have the
+  same command handler) and checks Dorsal's table for those mice against it: that it boots cleanly, takes every value
+  Dorsal offers, saves and survives a restart, doesn't crash on anything Dorsal sends, and what its LED does.
+  Results are in `RESULTS-other-brands.md`
 - `patch_all.py` makes the LED patch for every mouse in the official app, saves
   `firmware/<mouse>_patched.hex` and tests stock vs patched
 - `old_patches.py` runs the R5 patches that didn't keep the LED on (patches C, D and E in
