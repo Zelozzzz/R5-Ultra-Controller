@@ -138,17 +138,23 @@ Wired only. The dongle can't flash. See
 | Exit bootloader | `02 01 B0 04 B0` | reboots into the application |
 
 Every mouse has its own bootloader id, see `models.py` (a LAMZU one keeps the mouse's own vendor id:
-`0x37B0:0x0006` on the Tachi). Every program/verify packet is resent until the reply has `0xB0` at byte 5
+`0x37B0:0x0006` on the Tachi).
+
+The table is the R5's way, which the R5, M5 and R6 get. The six LAMZU mice get LAMZU's web hub's version, which is
+the same steps with different bytes: byte 2 is `00` in every packet instead of `02`, everything from byte 11 on is
+XOR `0x55` so what follows the data is `55` bytes, not zeros, the last program packet is as long as what's left of
+the file (the R5's way pads it with `FF`), and there's one verify per 32-byte block, not one per 16 bytes.
+ Every program/verify packet is resent until the reply has `0xB0` at byte 5
 or 6. A bootloader that reports status puts `0xA1` (or `0x02`) at byte 1 of a reply, our `0xB0` comes back at
 byte 5, and a verify's 32 bytes start at byte 12, XOR `0x55` again (byte 0 is the report id). Those offsets come
 from the verify code in Attack Shark's app and LAMZU's web hub, which read the flash back, once per 32-byte block
 from the block's own address, and only restart the mouse if it matches the file. Dorsal does the same for those
-addresses (its verifies 16 bytes into each block are only acknowledged), and if the version reply has no status
+addresses (the R5's way also verifies 16 bytes into each block, those are only acknowledged), and if the version reply has no status
 byte it can't and only checks the acknowledgements. Nobody has run this read-back on a real bootloader, so the R5,
 which flashed fine without it, isn't read back unless asked (`--readback`).
 
 
-## Buttons and onboard macros (Dorsal 2.1)
+## Buttons and onboard macros
 
 Implemented in `onboard.py`; event encoding in `macros.py`. Layouts were
 cross-checked with the vendor application's native encoder. Default button

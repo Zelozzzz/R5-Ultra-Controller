@@ -32,9 +32,9 @@ to 65 checks each on stock and on Dorsal firmware, 0 failed, and the patch chang
 LED (49 or 50 checks compared side by side each). The whole app was run against them with `dorsal_check.py`. Their firmware is a different build
 of the same code (the image starts at 0x6000, the LED is wired the other way round, the DPI button
 goes through 5 stages), see [docs/FIRMWARE.md](FIRMWARE.md#lamzu) (which also says where to get the .hex
-files). Nobody has flashed a real one. The flasher's packets match LAMZU's own web hub script for the
-address, length and data but differ in a few other bytes, and the bootloader itself isn't in the .hex, so
-it was never run. Dorsal reads every block back after writing it like the hub does (the R5 is the one mouse that isn't
+files). Nobody has flashed a real one. The flasher sends them the bytes LAMZU's own web hub sends (checked
+by running the hub's own code on the six files), and the bootloader itself isn't in the .hex, so it was
+never run. Dorsal reads every block back after writing it like the hub does (the R5 is the one mouse that isn't
 read back, it flashes the way it always did), but only against a pretend bootloader.
 
 ## started

@@ -170,9 +170,10 @@ ones, to the end of the image):
   patched image, checked against the version from before) and only the blocks being acknowledged.
   `dorsal firmware flash FILE --readback` asks for the check on an R5 too, nobody has run that on
   a real one. Attack Shark's app and LAMZU's web hub do the same,
-  one verify per block from its own address. Dorsal also sends a verify 16 bytes into each block
-  (it always has, and that works on the R5) but only checks that those are acknowledged, since nobody
-  has seen what a bootloader answers to them. A bootloader that doesn't answer with a status byte
+  one verify per block from its own address. The R5, M5 and R6 also get a verify 16 bytes into each block
+  (the R5 always has, and that works on it) but only checked for being acknowledged, since nobody
+  has seen what a bootloader answers to them. The six LAMZU mice don't get those, see below.
+  A bootloader that doesn't answer with a status byte
   can't be read back at all (Dorsal asks for the version up to 8 times before deciding that), and then
   Dorsal says it only saw the blocks being acknowledged. None of this has run against a real
   bootloader yet, only against a pretend one written from the code in those two tools. If it ever
@@ -271,18 +272,32 @@ What was checked: all six run on the virtual mouse (`tools/virtual_mouse/checkup
 on, `dorsal_check.py` for the whole app). Stock stops showing the DPI color 3.1 s after a DPI press
 (dark on battery, on the cable it falls back to a steady cyan idle light), Dorsal
 firmware keeps it on past 8 s on the cable and on battery and follows 30 color changes in 30 s.
-The flasher's packets were compared with the update code in LAMZU's own web hub script, by building the
-hub's packets from the real files with the hub's own code and diffing them with Dorsal's. The address,
-the length and the XOR'd data are the same on all six. What differs: byte 2 of every packet (Dorsal
-sends 2, like it does on the R5, the hub's calls put 0), the unused bytes after the data (the hub XORs its
-zero padding, Dorsal leaves zeros), Dorsal sends a verify per 16-byte segment where the hub sends one per
-32 bytes, and the last block, which the hub sends at its real length and Dorsal pads with FF (like it does
-on the R5). Dorsal's version of all that works on a real R5. Whether a LAMZU bootloader minds any of it
-isn't known.
+The six LAMZU mice are flashed with the bytes LAMZU's own web hub sends, not the R5's variants of them.
+That was checked by cutting the hub's own hex parser and packet builder out of its script, running them in
+node on each of the six files (stock, and with Dorsal's patch) and comparing what they make with what the
+flasher sends: every program packet, every verify packet, and the enter, version, erase and exit commands
+came out byte for byte the same (`tools/hub_check` does that again, the README there says how). What that means,
+against the R5's way:
+
+- byte 2 of every packet is 0 (the hub's calls put 0; the R5's way puts 2)
+- everything from byte 11 on is XOR'd with 0x55, so the bytes after the data are 0x55s, not zeros
+- the last block is only as long as what's left of the file (4 to 28 bytes on these six), not padded with FF
+  up to 16 or 32
+- one verify per 32-byte block, from its own address, and each one is read back and compared
+- bytes the file has nothing for (there are none in these six) are sent as 00, like the hub fills them
+
+The R5, M5 and R6 keep the R5's way, packet for packet (`tests/test_flasher.py` pins that).
+`hub_flash` in `models.py` is what picks the way. The tests pin the hub's bytes for made-up images and,
+when the files are in `firmware/`, for the real ones (the hashes come from the hub's code, not from Dorsal's).
+
+What isn't the hub's: the pauses. Dorsal waits 1.5 seconds after the erase where the hub asks for a status
+until it's ready, and 5 ms every 4 KB where the hub waits 1 ms, and the order the hub calls its steps in
+isn't in the part of its script that was saved (the steps themselves are). Longer pauses shouldn't hurt.
 
 What wasn't: nobody has flashed a real LAMZU. The bootloader isn't part of the .hex, so the virtual
 mouse can't run it. Dorsal reads every block back and compares it, the way the hub does, but only
-against a pretend bootloader written from the hub's and Attack Shark's code. The
+against a pretend bootloader written from the hub's and Attack Shark's code, so the bytes are the
+hub's but how a real LAMZU bootloader answers to them is still a guess. The
 newer LAMZU mice (Thorn V2 and the ones with 54H20 or LM20 in their names) have nRF54 chips, which the
 virtual mouse can't run, so Dorsal has no patch for them. The WLMOUSE Beast mice use the same chip, but their firmware has no LED timer
 like this one (the only 3000-tick checks in them are other timers), so nothing to patch there.

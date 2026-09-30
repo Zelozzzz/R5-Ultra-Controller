@@ -65,6 +65,7 @@ class Model:
     has_battery: bool = True                 # False: it only pushes a charge level as a message, there's nothing to read
     has_firmware_readback: bool = True       # False: no version Dorsal knows how to ask for
     flash_readback: bool = True              # False: flashed on a real one without reading the blocks back, so it stays that way
+    hub_flash: bool = False                  # True: flashed with the bytes LAMZU's web hub sends, not the R5's (see flasher.py)
 
     def fit_dpi(self, dpi: int, low: int = 100) -> int:
         """`dpi` inside this mouse's limits and on a value its sensor has."""
@@ -184,7 +185,8 @@ def _same(brand, name, key, vid, wired, receivers, dpi_max, stages, lift, cable,
                  more_receivers=tuple(receivers[1:]), dpi_max=dpi_max, stages=stages,
                  lift_off=tuple(f"{x} mm" for x in lift.split()), debounce=debounce,
                  polling_cable=cable, polling_receiver=receiver, polling_by_receiver=tuple(by_receiver),
-                 photo=PHOTOS.get(key), led_spot=LED_SPOTS.get(key))
+                 photo=PHOTOS.get(key), led_spot=LED_SPOTS.get(key),
+                 hub_flash=bootloader is not None)      # the ones with a bootloader are the LAMZU six from LAMZU's hub
 
 
 # from the hubs at xvalleyinno.top: CRDRAKO PANEL, LAMZU Aurora, UNIUS MOUSE HUB, RAWM HUB, WL MOUSE HUB.

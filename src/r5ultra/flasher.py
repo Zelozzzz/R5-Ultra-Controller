@@ -16,6 +16,11 @@ back at all, then all Dorsal sees is that it acknowledged each block and
 flash() says so. The read-back has only been run against a pretend bootloader
 written from the vendors' code, not a real one. The R5 is flashed without it (flash_readback in
 models.py), exactly as it was on the real mouse it has worked on; readback=True asks for it there too.
+
+The six LAMZU mice are flashed with the bytes LAMZU's web hub sends (hub_flash in models.py, checked by running the
+hub's own code on their files, see docs/FIRMWARE.md). That differs from the R5's way in four places: byte 2 of
+every packet is 0 instead of 2, a program packet's unused end is XOR'd with 0x55 as well, the last block is only
+as long as what's left of the file, and each 32-byte block gets one verify, not two. The R5, M5 and R6 keep the R5's.
 """
 
 from __future__ import annotations
@@ -28,7 +33,8 @@ from .firmware import FirmwareError, identify
 
 APP_VID, APP_PID = models.VID, models.R5_ULTRA.wired_pid      # the R5's, flash() takes the ids from the model
 BL_VID, BL_PID = models.VID, models.R5_ULTRA.bootloader_pid
-DEVICE_ID = 2
+DEVICE_ID = 2               # byte 2 of every packet the R5's way sends
+HUB_DEVICE_ID = 0           # ...and the one LAMZU's web hub puts there
 BL_CMD = 0xB0
 
 SEGMENT = 16
@@ -61,23 +67,23 @@ class FlashWritten(FlashError):
     """Every block went in and the mouse was told to restart, but it didn't show up again."""
 
 
-def enter_bl_packet() -> bytes:
-    d = bytearray(64); d[2] = DEVICE_ID; d[3] = 0x01; d[6] = BL_CMD
+def enter_bl_packet(device: int = DEVICE_ID) -> bytes:
+    d = bytearray(64); d[2] = device; d[3] = 0x01; d[6] = BL_CMD
     return bytes(d)
 
 
-def exit_bl_packet() -> bytes:
-    d = bytearray(64); d[2] = DEVICE_ID; d[3] = 0x01; d[4] = BL_CMD; d[5] = 0x04; d[6] = BL_CMD
+def exit_bl_packet(device: int = DEVICE_ID) -> bytes:
+    d = bytearray(64); d[2] = device; d[3] = 0x01; d[4] = BL_CMD; d[5] = 0x04; d[6] = BL_CMD
     return bytes(d)
 
 
-def bl_version_packet() -> bytes:
-    d = bytearray(64); d[2] = DEVICE_ID; d[3] = 0x06; d[4] = BL_CMD; d[5] = 0x80
+def bl_version_packet(device: int = DEVICE_ID) -> bytes:
+    d = bytearray(64); d[2] = device; d[3] = 0x06; d[4] = BL_CMD; d[5] = 0x80
     return bytes(d)
 
 
-def erase_packet() -> bytes:
-    d = bytearray(64); d[2] = DEVICE_ID; d[3] = 0x08; d[4] = BL_CMD; d[5] = 0x01
+def erase_packet(device: int = DEVICE_ID) -> bytes:
+    d = bytearray(64); d[2] = device; d[3] = 0x08; d[4] = BL_CMD; d[5] = 0x01
     return bytes(d)
 
 
@@ -85,9 +91,10 @@ def _addr_bytes(addr: int) -> bytes:
     return bytes(((addr >> 24) & 0xFF, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF))
 
 
-def program_packet(addr: int, data: bytes) -> bytes:
+def program_packet(addr: int, data: bytes, device: int = DEVICE_ID, fill: bool = False) -> bytes:
+    """`fill`: XOR the rest of the report after the data too, so it ends in 0x55s instead of zeros (LAMZU's hub)."""
     d = bytearray(64)
-    d[2] = DEVICE_ID
+    d[2] = device
     d[3] = len(data) + 5
     d[4] = BL_CMD
     d[5] = 0x02
@@ -95,12 +102,14 @@ def program_packet(addr: int, data: bytes) -> bytes:
     d[7:11] = _addr_bytes(addr)
     for i, b in enumerate(data):
         d[11 + i] = b ^ 0x55
+    if fill:
+        d[11 + len(data):] = b"\x55" * (53 - len(data))
     return bytes(d)
 
 
-def verify_packet(addr: int) -> bytes:
+def verify_packet(addr: int, device: int = DEVICE_ID) -> bytes:
     d = bytearray(64)
-    d[2] = DEVICE_ID; d[3] = 0x20; d[4] = BL_CMD; d[5] = 0x83; d[6] = 0x20
+    d[2] = device; d[3] = 0x20; d[4] = BL_CMD; d[5] = 0x83; d[6] = 0x20
     d[7:11] = _addr_bytes(addr)
     return bytes(d)
 
@@ -114,6 +123,17 @@ def slice_firmware(ih) -> list[tuple[int, bytes]]:
         segments.append((addr, chunk.ljust(SEGMENT, b"\xFF")))
         addr += SEGMENT
     return segments
+
+
+def hub_packets(ih) -> list[tuple[int, bytes]]:
+    """(address, data) of the packets LAMZU's web hub cuts a .hex into: 32 bytes each from the first address on, the
+    last one only as long as what's left over (slice_firmware pads that one with FF), and 00 in any gap the file
+    has. The hub sends a verify for each of these."""
+    lo, hi = ih.minaddr(), ih.maxaddr()
+    image = bytearray(hi - lo + 1)
+    for start, stop in ih.segments():
+        image[start - lo:stop - lo] = bytes(ih.tobinarray(start=start, end=stop - 1))
+    return [(lo + i, bytes(image[i:i + 32])) for i in range(0, len(image), 32)]
 
 
 def pair_segments(segments: list[tuple[int, bytes]]) -> list[tuple[int, bytes]]:
@@ -205,9 +225,9 @@ def _reports_status(reply: bytes) -> bool:
     return len(reply) > 1 and reply[1] in OK_STATUS
 
 
-def _read_back(dev, addr: int, expected: bytes, first: bool = False) -> None:
+def _read_back(dev, addr: int, expected: bytes, first: bool = False, device: int = DEVICE_ID) -> None:
     """Ask the bootloader for the bytes it holds at addr and check they're the ones that were written."""
-    packet = verify_packet(addr)
+    packet = verify_packet(addr, device)
     status, got, last = None, None, b""
     for _ in range(READBACK_ROUNDS):
         _send(dev, packet)
@@ -236,11 +256,11 @@ def _read_back(dev, addr: int, expected: bytes, first: bool = False) -> None:
                      f"It wasn't restarted.{hint}")
 
 
-def _version_reply(bl) -> bytes:
+def _version_reply(bl, device: int = DEVICE_ID) -> bytes:
     """The bootloader's answer to a version query, asked again until it looks like one (our B0 comes back)."""
     reply = b""
     for _ in range(VERSION_TRIES):
-        _send(bl, bl_version_packet())
+        _send(bl, bl_version_packet(device))
         time.sleep(0.1)
         reply = _recv(bl)
         if _fields(reply) is not None:
@@ -270,17 +290,20 @@ def visible_devices(vid: int = models.VID) -> list[str]:
 
 
 def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _no_progress,
-                        readback: bool = True, proven: bool = False) -> bool:
+                        readback: bool = True, proven: bool = False, hub: bool = False) -> bool:
     """True if every segment was read back and matched, False if it couldn't be (or wasn't asked to) and
     all Dorsal saw was the bootloader acknowledging them. `proven`: it wasn't asked for because this mouse has
-    always been flashed without it, which only changes what the log says."""
-    reply = _version_reply(bl)
+    always been flashed without it, which only changes what the log says. `hub`: the way LAMZU's web hub does it,
+    where `segments` is the packets themselves, each verified (and read back) once."""
+    device = HUB_DEVICE_ID if hub else DEVICE_ID
+    unit, one = ("blocks", "block") if hub else ("segments", "segment")
+    reply = _version_reply(bl, device)
     log(f"  Bootloader: {reply[:14].hex(' ')}")
     reads_back = readback and _reports_status(reply)
 
     log("Erasing...")
     progress("erase", 0.0)
-    _send(bl, erase_packet())
+    _send(bl, erase_packet(device))
     time.sleep(1.5)
     _drain(bl)
 
@@ -291,7 +314,7 @@ def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _n
         delay = PROGRAM_DELAY_4K if cache <= 0 else PROGRAM_DELAY
         if cache <= 0:
             cache = CACHE_SIZE
-        if not _send_and_ack(bl, program_packet(addr, data), delay):
+        if not _send_and_ack(bl, program_packet(addr, data, device, fill=hub), delay):
             raise FlashError(f"No acknowledgement programming packet {i} (0x{addr:08X})")
         progress("program", (i + 1) / len(packets))
         pct = i * 100 // len(packets)
@@ -300,22 +323,24 @@ def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _n
             last_pct = pct
 
     if reads_back:
-        log(f"Verifying {len(segments)} segments, reading each 32-byte block back...")
+        log(f"Verifying {len(segments)} {unit}, reading each 32-byte block back...")
     elif proven:
-        log(f"Verifying {len(segments)} segments...")
+        log(f"Verifying {len(segments)} {unit}...")
     elif not readback:
-        log(f"Verifying {len(segments)} segments. Reading them back is switched off, so all Dorsal can see is "
+        log(f"Verifying {len(segments)} {unit}. Reading them back is switched off, so all Dorsal can see is "
             "that the bootloader acknowledges them, not what it wrote.")
     else:
-        log(f"Verifying {len(segments)} segments. This bootloader doesn't answer with a status byte, so all Dorsal "
+        log(f"Verifying {len(segments)} {unit}. This bootloader doesn't answer with a status byte, so all Dorsal "
             "can see is that it acknowledges them, not what it wrote.")
     last_pct = -1
     for i, (addr, data) in enumerate(segments):
-        if reads_back and i % 2 == 0:
-            # a block's own address, two segments: what the vendors' tools read back (the odd ones only get acknowledged)
-            _read_back(bl, addr, data + (segments[i + 1][1] if i + 1 < len(segments) else b""), first=i == 0)
-        elif not _send_and_ack(bl, verify_packet(addr), VERIFY_DELAY):
-            raise FlashError(f"No acknowledgement verifying segment {i} (0x{addr:08X})")
+        if reads_back and (hub or i % 2 == 0):
+            # a block's own address, what the vendors' tools read back. The R5's way has two segments to a block and
+            # reads the first, the second only gets acknowledged
+            want = data if hub else data + (segments[i + 1][1] if i + 1 < len(segments) else b"")
+            _read_back(bl, addr, want, first=i == 0, device=device)
+        elif not _send_and_ack(bl, verify_packet(addr, device), VERIFY_DELAY):
+            raise FlashError(f"No acknowledgement verifying {one} {i} (0x{addr:08X})")
         progress("verify", (i + 1) / len(segments))
         pct = i * 100 // len(segments)
         if pct != last_pct and pct % 10 == 0:
@@ -324,7 +349,7 @@ def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _n
 
     log("Rebooting the mouse into the new firmware...")
     progress("reboot", 1.0)
-    _send(bl, exit_bl_packet())
+    _send(bl, exit_bl_packet(device))
     return reads_back
 
 
@@ -380,8 +405,12 @@ def flash(ih, log: Log = print, allow_unknown: bool = False, progress: Progress 
     vid, app_pid, bl_pid = model.vid, model.wired_pid, model.bootloader_pid    # the bootloader keeps the mouse's vendor id
     log(f"Image: {known.name if known else 'UNRECOGNIZED (allowed by --allow-unknown)'}")
 
-    segments = slice_firmware(ih)
-    packets = pair_segments(segments)
+    hub = model.hub_flash
+    if hub:
+        segments = packets = hub_packets(ih)
+    else:
+        segments = slice_firmware(ih)
+        packets = pair_segments(segments)
 
     try:
         bl = open_hid(vid, bl_pid, loose=True)
@@ -402,7 +431,7 @@ def flash(ih, log: Log = print, allow_unknown: bool = False, progress: Progress 
                     if receiver is not None else "The mouse isn't visible at all. Check the cable.")
             raise FlashNotStarted(f"Wired {model.name} (PID {app_pid:04X}) not found. " + hint)
         log("Entering bootloader...")
-        _send(app, enter_bl_packet())
+        _send(app, enter_bl_packet(HUB_DEVICE_ID if hub else DEVICE_ID))
         try:
             app.close()
         except Exception:
@@ -416,7 +445,7 @@ def flash(ih, log: Log = print, allow_unknown: bool = False, progress: Progress 
                              "Close other mouse software, replug the cable and try again.")
 
     try:
-        verified = _program_and_verify(bl, segments, packets, log, progress, ask, proven)
+        verified = _program_and_verify(bl, segments, packets, log, progress, ask, proven, hub)
     finally:
         try:
             bl.close()

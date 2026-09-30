@@ -1,8 +1,14 @@
 """The flasher against a pretend bootloader that keeps a flash array, so what it reads back is what really went
 in (or didn't). It answers the way the code in Attack Shark's app and LAMZU's web hub says a bootloader does:
-status first, our B0 echoed at [5], the bytes it read out from [12], XOR 0x55. No real bootloader has been tried."""
+status first, our B0 echoed at [5], the bytes it read out from [12], XOR 0x55. It also refuses a packet worded
+the wrong way for the mouse it plays (a LAMZU gets the hub's way, the Attack Shark three the R5's, see
+flasher.py). No real bootloader has been tried."""
+
+import hashlib
+from pathlib import Path
 
 import pytest
+from intelhex import IntelHex
 
 from r5ultra import firmware as fw
 from r5ultra import flasher, models
@@ -10,6 +16,12 @@ from test_firmware import fake_stock
 
 TACHI = models.by_key("lamzu-tachi")
 R5 = models.R5_ULTRA
+M5 = models.M5_ULTRA
+R6 = models.R6
+REPO = Path(__file__).resolve().parent.parent
+
+# the two ways a bootloader is spoken to: LAMZU's hub's (the six LAMZU mice) and the R5's (the other three)
+both_ways = pytest.mark.parametrize("flow", [TACHI, M5], ids=["hub's way (Tachi)", "R5's way (M5 Ultra)"])
 
 
 class _Device:
@@ -51,11 +63,13 @@ class Hid:
       busy    says "busy" a few times before each verify answer
       late    still gives the previous answer the first time it's asked
       acks    only acknowledges, no status byte and no data (what the tests before this one pretended)
+      deaf    answers everything but the verifies, which get nothing back at all
       silent  never answers            stays   comes back as its bootloader after the restart
       gone    never comes back after the restart   acks_gone  both of acks and gone"""
 
     def __init__(self, model=TACHI, mode="good"):
         self.model, self.mode = model, mode
+        self.byte2 = flasher.HUB_DEVICE_ID if model.hub_flash else flasher.DEVICE_ID    # what it's spoken to with
         self.present = {(model.vid, model.wired_pid)}
         self.flash = {}
         self.sent, self.opened = [], []
@@ -82,7 +96,8 @@ class Hid:
 
     def receive(self, d):
         self.sent.append(d)
-        if d == flasher.enter_bl_packet():
+        assert d[2] == self.byte2, f"byte 2 is {d[2]}, {self.model.name} is spoken to with {self.byte2}"
+        if d == flasher.enter_bl_packet(self.byte2):
             self.present = self.present - {(self.model.vid, self.model.wired_pid)} | {(self.model.vid, self.model.bootloader_pid)}
             return
         if d[4] != flasher.BL_CMD:
@@ -99,6 +114,8 @@ class Hid:
         elif op == 0x02:                                                # a program packet
             k, self.programmed = self.programmed, self.programmed + 1
             length, addr = d[6], int.from_bytes(d[7:11], "big")
+            end = bytes([0x55 if self.model.hub_flash else 0x00]) * (53 - length)     # what follows the data
+            assert d[3] == length + 5 and d[11 + length:] == end, "a program packet's end isn't worded the way this mouse gets it"
             data = bytes(b ^ 0x55 for b in d[11:11 + length])
             if (self.mode == "drop" and k == 3) or (self.mode == "drop0" and k == 0):
                 data = b""
@@ -112,6 +129,8 @@ class Hid:
                 addr = base + (addr - base) // 32 * 32
             answer[11:43] = bytes(self.flash.get(addr + i, 0xFF) ^ 0x55 for i in range(32))
             answer[0] = 0xA5 if self.mode == "error" or (self.mode == "hiccup" and addr not in self.asked) else 0xA1
+            if self.mode == "deaf":
+                answer = bytearray(64)
             self.asked.add(addr)
             self.late = 1 if self.mode == "late" else 0
             self.busy = 3 if self.mode == "busy" else 0
@@ -157,125 +176,162 @@ def _verifies(hid):
     return [int.from_bytes(d[7:11], "big") for d in hid.sent if d[4:7] == bytes([0xB0, 0x83, 0x20])]
 
 
-def test_a_flash_is_read_back_and_compared(bench):
-    hid, image = bench()
+def _device(model):
+    return flasher.HUB_DEVICE_ID if model.hub_flash else flasher.DEVICE_ID
+
+
+def _units(image, model):
+    """(what gets verified, what gets programmed) the way this mouse's flow cuts the image: LAMZU's hub cuts
+    32-byte blocks and verifies each, the R5's way verifies each 16-byte segment and programs them in pairs."""
+    if model.hub_flash:
+        packets = flasher.hub_packets(image)
+        return packets, packets
+    segments = flasher.slice_firmware(image)
+    return segments, flasher.pair_segments(segments)
+
+
+@both_ways
+def test_a_flash_is_read_back_and_compared(bench, flow):
+    hid, image = bench(model=flow)
     logs = []
     assert flasher.flash(image, log=logs.append) is True
     assert hid.exited and logs[-1] == "Mouse is back. Flash complete."
-    assert _verifies(hid) == [addr for addr, _ in flasher.slice_firmware(image)]       # each asked once, each matched
+    assert _verifies(hid) == [addr for addr, _ in _units(image, flow)[0]]       # each asked once, each matched
     assert any("reading each 32-byte block back" in line for line in logs)
 
 
-def test_a_bigger_image_gets_its_pause_every_4_kb(bench, monkeypatch):
-    hid, image = bench(size=0x10000)                              # 64 KB, 2048 packets
+@both_ways
+def test_a_bigger_image_gets_its_pause_every_4_kb(bench, monkeypatch, flow):
+    hid, image = bench(model=flow, size=0x10000)                  # 64 KB, 2048 packets
     sleeps = []
     monkeypatch.setattr(flasher.time, "sleep", sleeps.append)
     assert flasher.flash(image, log=lambda _m: None) is True
-    assert len(flasher.pair_segments(flasher.slice_firmware(image))) == 2048
+    units, packets = _units(image, flow)
+    assert len(packets) == 2048
     assert sleeps.count(flasher.PROGRAM_DELAY_4K) == 16          # one after every 128 packets, like the vendors' tools
-    assert len(_verifies(hid)) == 4096
+    assert len(_verifies(hid)) == len(units)                     # 4096 the R5's way, two to a block. 2048 the hub's, one
 
 
 def test_only_the_reads_at_a_blocks_own_address_are_compared(bench):
-    """The vendors' tools verify once per 32-byte block, from its own address. Dorsal's verifies in between, 16 bytes
-    further on, have never been seen answered, so a bootloader that gives the whole block back for them (the wrong
-    half) mustn't fail the flash."""
-    hid, image = bench("aligned")
+    """The R5's way verifies once per 16-byte segment, so twice per 32-byte block. The vendors' tools verify once per
+    block, from its own address. The verifies in between, 16 bytes further on, have never been seen answered, so a
+    bootloader that gives the whole block back for them (the wrong half) mustn't fail the flash."""
+    hid, image = bench("aligned", model=M5)
     assert flasher.flash(image, log=lambda _m: None) is True
     assert len(_verifies(hid)) == len(flasher.slice_firmware(image))          # the odd ones are still sent, they commit
 
 
-def test_a_block_acknowledged_but_never_written_stops_the_flash_before_the_restart(bench):
-    hid, image = bench("drop")
-    segments = flasher.slice_firmware(image)
+@both_ways
+def test_a_block_acknowledged_but_never_written_stops_the_flash_before_the_restart(bench, flow):
+    hid, image = bench("drop", model=flow)
+    packets = _units(image, flow)[1]
     with pytest.raises(flasher.FlashError, match="different bytes") as caught:
         flasher.flash(image, log=lambda _m: None)
-    assert f"0x{segments[6][0]:08X}" in str(caught.value)              # packet 3 is segments 6 and 7
+    assert f"0x{packets[3][0]:08X}" in str(caught.value)               # packet 3, counting from 0
     assert not hid.exited
-    assert flasher.exit_bl_packet() not in hid.sent
+    assert flasher.exit_bl_packet(_device(flow)) not in hid.sent
 
 
-def test_one_wrong_bit_is_caught_and_says_where(bench):
-    hid, image = bench("flip")
-    segments = flasher.slice_firmware(image)
+@both_ways
+def test_one_wrong_bit_is_caught_and_says_where(bench, flow):
+    hid, image = bench("flip", model=flow)
+    addr, data = _units(image, flow)[1][5]
     with pytest.raises(flasher.FlashError) as caught:
         flasher.flash(image, log=lambda _m: None)
-    wrote = segments[10][1][0]                                          # packet 5 starts at segment 10
-    assert f"0x{segments[10][0]:08X}" in str(caught.value)
-    assert f"wrote {wrote:02x}" in str(caught.value) and f"read {wrote ^ 1:02x}" in str(caught.value)
+    assert f"0x{addr:08X}" in str(caught.value)
+    assert f"wrote {data[0]:02x}" in str(caught.value) and f"read {data[0] ^ 1:02x}" in str(caught.value)
     assert not hid.exited
 
 
-def test_a_failure_carries_what_the_bootloader_said_and_flags_a_bad_first_block(bench):
-    hid, image = bench("drop")
+@both_ways
+def test_a_failure_carries_what_the_bootloader_said_and_flags_a_bad_first_block(bench, flow):
+    hid, image = bench("drop", model=flow)
     with pytest.raises(flasher.FlashError, match=r"its answer began 00 a1 ") as caught:
         flasher.flash(image, log=lambda _m: None)
     assert "very first block" not in str(caught.value)                 # a later block: the write failed, not the reading
-    hid, image = bench("drop0")
+    hid, image = bench("drop0", model=flow)
     with pytest.raises(flasher.FlashError, match="very first block") as caught:
         flasher.flash(image, log=lambda _m: None)
     assert "misreading" in str(caught.value) and not hid.exited
 
 
-def test_the_version_query_is_asked_again_until_the_answer_looks_like_a_bootloader(bench):
-    hid, image = bench("slowstart")
+@both_ways
+def test_the_version_query_is_asked_again_until_the_answer_looks_like_a_bootloader(bench, flow):
+    version = flasher.bl_version_packet(_device(flow))
+    hid, image = bench("slowstart", model=flow)
     logs = []
     assert flasher.flash(image, log=logs.append) is True               # the read-back still got switched on
-    assert sum(1 for d in hid.sent if d == flasher.bl_version_packet()) == 4
+    assert sum(1 for d in hid.sent if d == version) == 4
     assert any("reading each 32-byte block back" in line for line in logs)
-    hid, image = bench("silent")                                        # never answers: gives up after the tries
+    hid, image = bench("silent", model=flow)                            # never answers: gives up after the tries
     with pytest.raises(flasher.FlashError, match="No acknowledgement"):
         flasher.flash(image, log=lambda _m: None)
-    assert sum(1 for d in hid.sent if d == flasher.bl_version_packet()) == flasher.VERSION_TRIES
+    assert sum(1 for d in hid.sent if d == version) == flasher.VERSION_TRIES
 
 
-def test_reading_back_can_be_switched_off(bench):
-    hid, image = bench("drop")                                          # this one would fail a read-back
+@both_ways
+def test_reading_back_can_be_switched_off(bench, flow):
+    hid, image = bench("drop", model=flow)                              # this one would fail a read-back
     logs = []
     assert flasher.flash(image, log=logs.append, readback=False) is False
     assert hid.exited and any("switched off" in line for line in logs)
-    assert len(_verifies(hid)) == len(flasher.slice_firmware(image))   # every verify still goes out, they commit
+    assert len(_verifies(hid)) == len(_units(image, flow)[0])          # every verify still goes out, they commit
 
 
-def test_an_error_status_is_asked_again_and_then_stops_the_flash(bench):
-    hid, image = bench("error")
+@both_ways
+def test_an_error_status_is_asked_again_and_then_stops_the_flash(bench, flow):
+    hid, image = bench("error", model=flow)
     with pytest.raises(flasher.FlashError, match="didn't answer the read-back .*status 0xA5"):
         flasher.flash(image, log=lambda _m: None)
     assert not hid.exited
-    assert len(_verifies(hid)) == flasher.READBACK_ROUNDS              # the first segment, sent again each round
+    assert len(_verifies(hid)) == flasher.READBACK_ROUNDS              # the first block, sent again each round
 
 
-def test_an_error_status_that_goes_away_when_asked_again_is_fine(bench):
-    hid, image = bench("hiccup")
+@both_ways
+def test_an_error_status_that_goes_away_when_asked_again_is_fine(bench, flow):
+    hid, image = bench("hiccup", model=flow)
     assert flasher.flash(image, log=lambda _m: None) is True
-    blocks = (len(flasher.slice_firmware(image)) + 1) // 2
-    assert len(_verifies(hid)) == 2 * blocks + (len(flasher.slice_firmware(image)) - blocks)    # each block asked, failed, asked again
+    units, packets = _units(image, flow)
+    assert len(_verifies(hid)) == len(units) + len(packets)            # each block asked, failed, asked again
 
 
-def test_a_busy_bootloader_is_asked_again_without_resending(bench):
-    hid, image = bench("busy")
+@both_ways
+def test_a_busy_bootloader_is_asked_again_without_resending(bench, flow):
+    hid, image = bench("busy", model=flow)
     assert flasher.flash(image, log=lambda _m: None) is True
-    assert len(_verifies(hid)) == len(flasher.slice_firmware(image))
+    assert len(_verifies(hid)) == len(_units(image, flow)[0])
 
 
-def test_an_answer_that_is_still_the_last_one_isnt_taken_for_a_mismatch(bench):
-    hid, image = bench("late")
+@both_ways
+def test_an_answer_that_is_still_the_last_one_isnt_taken_for_a_mismatch(bench, flow):
+    hid, image = bench("late", model=flow)
     assert flasher.flash(image, log=lambda _m: None) is True
-    assert len(_verifies(hid)) == len(flasher.slice_firmware(image))
+    assert len(_verifies(hid)) == len(_units(image, flow)[0])
 
 
-def test_a_bootloader_that_only_acknowledges_still_flashes_and_says_it_couldnt_check(bench):
-    hid, image = bench("acks")
+@both_ways
+def test_a_bootloader_that_only_acknowledges_still_flashes_and_says_it_couldnt_check(bench, flow):
+    hid, image = bench("acks", model=flow)
     logs = []
     assert flasher.flash(image, log=logs.append) is False
     assert hid.exited
     assert any("doesn't answer with a status byte" in line for line in logs)
     assert "couldn't be read back, so it isn't confirmed" in logs[-1] and "Flash complete" not in logs[-1]
-    assert len(_verifies(hid)) == len(flasher.slice_firmware(image))   # still one verify per segment, it commits the write
+    assert len(_verifies(hid)) == len(_units(image, flow)[0])          # still every verify, they commit the write
 
 
-def test_a_bootloader_that_never_answers_stops_at_the_first_block(bench):
-    hid, image = bench("silent")
+@both_ways
+def test_a_bootloader_that_stops_answering_verifies_is_said_so_by_the_unit_the_flow_verifies(bench, flow):
+    hid, image = bench("deaf", model=flow)
+    unit = "block" if flow.hub_flash else "segment"
+    with pytest.raises(flasher.FlashError, match=rf"No acknowledgement verifying {unit} 0 \(0x"):
+        flasher.flash(image, log=lambda _m: None, readback=False)
+    assert not hid.exited
+
+
+@both_ways
+def test_a_bootloader_that_never_answers_stops_at_the_first_block(bench, flow):
+    hid, image = bench("silent", model=flow)
     with pytest.raises(flasher.FlashError, match="No acknowledgement programming packet 0"):
         flasher.flash(image, log=lambda _m: None)
     assert not hid.exited
@@ -315,7 +371,7 @@ def test_every_mouse_with_firmware_is_flashed_under_its_own_ids(bench, model):
     Maya X is the one whose own vendor id is Attack Shark's."""
     hid, image = bench(model=model)
     assert flasher.flash(image, log=lambda _m: None) is True
-    assert hid.exited and flasher.enter_bl_packet() in hid.sent
+    assert hid.exited and flasher.enter_bl_packet(_device(model)) in hid.sent
     assert set(hid.enumerated) <= {model.vid}                                          # nobody else's vendor id was looked at
     assert hid.opened[0] == f"{model.vid:04x}:{model.wired_pid:04x}".encode()        # the mouse first...
     assert f"{model.vid:04x}:{model.bootloader_pid:04x}".encode() in hid.opened       # ...then its bootloader
@@ -347,6 +403,18 @@ def test_the_r5_is_flashed_exactly_the_way_it_always_was(bench):
     assert not any("read" in line.lower() for line in logs)
 
 
+@pytest.mark.parametrize("model", [M5, R6], ids=lambda m: m.key)
+def test_the_m5_and_r6_get_the_r5s_packets_and_only_add_the_read_back(bench, model):
+    hid, image = bench(model=model)
+    assert flasher.flash(image, log=lambda _m: None) is True
+    segments = flasher.slice_firmware(image)
+    assert hid.sent == ([flasher.enter_bl_packet(), flasher.bl_version_packet(), flasher.erase_packet()]
+                        + [flasher.program_packet(a, d) for a, d in flasher.pair_segments(segments)]
+                        + [flasher.verify_packet(a) for a, _ in segments]
+                        + [flasher.exit_bl_packet()])
+    assert {d[2] for d in hid.sent} == {flasher.DEVICE_ID}
+
+
 def test_the_r5_reads_back_when_asked_to_and_then_a_bad_write_is_caught(bench):
     hid, image = bench("drop", model=R5)               # acknowledges a block and never writes it
     assert flasher.flash(image, log=lambda _m: None) is True         # the R5 way: acknowledged is all that's checked
@@ -370,6 +438,185 @@ def test_the_r5_written_message_says_sent_not_went_in(bench, monkeypatch):
                         lambda vid, pid, timeout, log, **kw: None if pid == R5.wired_pid else real(vid, pid, timeout, log, **kw))
     with pytest.raises(flasher.FlashWritten, match=r"firmware was sent, but the mouse didn't come back"):
         flasher.flash(image, log=lambda _m: None)
+
+
+# the six LAMZU mice get what LAMZU's web hub sends
+
+def test_only_the_six_lamzu_mice_are_flashed_the_hubs_way():
+    assert [m.key for m in models.MODELS if m.hub_flash] == [
+        "lamzu-maya-x", "lamzu-tachi", "lamzu-inca", "lamzu-maya", "lamzu-paro", "lamzu-thorn"]
+    assert not any(m.hub_flash for m in (R5, M5, R6, models.R8))
+    assert all(m.hub_flash for m in models.MODELS if m.firmware_from_hub)     # a mouse whose firmware comes from the hub
+
+
+def test_a_lamzu_is_flashed_with_the_bytes_the_hub_sends(bench):
+    hid, image = bench(model=TACHI)
+    assert flasher.flash(image, log=lambda _m: None) is True
+    packets = flasher.hub_packets(image)
+    assert len(packets) == 8
+    assert hid.sent == ([flasher.enter_bl_packet(0), flasher.bl_version_packet(0), flasher.erase_packet(0)]
+                        + [flasher.program_packet(a, d, 0, fill=True) for a, d in packets]
+                        + [flasher.verify_packet(a, 0) for a, _ in packets]      # one for each 32-byte block
+                        + [flasher.exit_bl_packet(0)])
+    assert {d[2] for d in hid.sent} == {0}
+
+
+def test_the_last_block_goes_out_as_long_as_it_is_the_hubs_way_and_padded_the_r5s(bench):
+    def last_program(hid):
+        return [d for d in hid.sent if d[4:6] == bytes([0xB0, 0x02])][-1]
+
+    hid, image = bench(model=TACHI, size=0x105)                   # eight blocks and 5 bytes over
+    logs = []
+    assert flasher.flash(image, log=logs.append) is True          # the read-back compares those 5 bytes and no more
+    assert len(flasher.hub_packets(image)) == 9
+    last = last_program(hid)
+    assert (last[3], last[6]) == (10, 5) and last[11 + 5:] == bytes([0x55]) * 48
+    assert any("Programming 9 packets" in line for line in logs)
+    hid, image = bench(model=M5, size=0x105)                      # the R5's way pads it with FF up to a 16-byte segment
+    assert flasher.flash(image, log=lambda _m: None) is True
+    last = last_program(hid)
+    assert (last[3], last[6]) == (21, 16) and last[11 + 5:11 + 16] == bytes([0xFF ^ 0x55]) * 11 and last[27:] == bytes(37)
+
+
+def test_the_hub_way_says_blocks_where_the_r5s_says_segments(bench):
+    hid, image = bench(model=TACHI)
+    logs = []
+    flasher.flash(image, log=logs.append)
+    assert "Verifying 8 blocks, reading each 32-byte block back..." in logs
+    hid, image = bench(model=M5)
+    logs = []
+    flasher.flash(image, log=logs.append)
+    assert "Verifying 16 segments, reading each 32-byte block back..." in logs
+
+
+def test_the_device_byte_and_the_fill_are_all_a_packet_changes():
+    r5 = flasher.program_packet(0x6000, b"\x00\xff")
+    assert r5 == flasher.program_packet(0x6000, b"\x00\xff", flasher.DEVICE_ID, False)      # the defaults are the R5's
+    hub = flasher.program_packet(0x6000, b"\x00\xff", 0, True)
+    assert (r5[2], hub[2]) == (2, 0)
+    assert r5[:2] == hub[:2] and r5[3:13] == hub[3:13]                    # length, command, address, the data XOR'd
+    assert r5[13:] == bytes(51) and hub[13:] == bytes([0x55]) * 51        # only what follows the data differs
+    assert flasher.verify_packet(0x6000, 0)[3:] == flasher.verify_packet(0x6000)[3:]
+    assert flasher.verify_packet(0x6000, 0)[2] == 0 and flasher.verify_packet(0x6000)[2] == 2
+    for build in (flasher.enter_bl_packet, flasher.exit_bl_packet, flasher.bl_version_packet, flasher.erase_packet):
+        assert build()[2] == 2 and build(0)[2] == 0 and build(0)[3:] == build()[3:]
+
+
+# what LAMZU's hub puts on the wire for these made-up images, from running the hub's own hex parser and packet
+# builder on them (docs/FIRMWARE.md says how): (address, length, seed) pieces of a fixed pattern, how long the
+# packets it makes are, and a sha256 over its program packets followed by its verify packets
+HUB_CASES = [
+    ("50 bytes", [(0x6000, 50, 3)], [32, 18],
+     "1e17612207fa379957c4e10393b5d9a53ebfbcad22d0e89b8ad64998f05df978"),
+    ("100 bytes", [(0x6000, 100, 3)], [32, 32, 32, 4],
+     "b0baee7f3398c929a934397c0a96f75fdced88a2e214e3bdfd41ebe5ed04635d"),
+    ("a gap", [(0x6000, 20, 3), (0x6040, 10, 9)], [32, 32, 10],
+     "55f9e2e6694aeb5138b82d9f38723994e6caf98177b6125f38b0d3196126522b"),
+    ("over 64 KB", [(0xffe0, 64, 3)], [32, 32],
+     "db9431dd2861c2c03e979f7763ec80b160abbeee288bb4b5932bc0f5b30945e4"),
+    ("32 exactly", [(0x6000, 32, 3)], [32],
+     "419309ab0cad8447244a9fe6f27634a3771d85595a703c01eaca24d9d0c7cc19"),
+    ("one byte", [(0x6000, 1, 3)], [1],
+     "e5cadca35ae3760f78bc186d93b60caeb6b34439786c8dd16bc08b10c99dfd34"),
+]
+
+# and two of them in full: the 50-byte image's program and verify packets, and a one-byte image's program packet
+HUB_50_PROGRAM = (
+    "00000025b0022000006000565f444d4a7378616e171c05020b3039262fd4ddda"
+    "c3c8f1fee7ec95929b8089555555555555555555555555555555555555555555",
+    "00000017b0021200006020b6bfa4adaa5358414e777c65626b1019060f555555"
+    "5555555555555555555555555555555555555555555555555555555555555555",
+)
+HUB_50_VERIFY = (
+    "00000020b0832000006000000000000000000000000000000000000000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "00000020b0832000006020000000000000000000000000000000000000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000",
+)
+HUB_1_PROGRAM = (
+    "00000006b0020100006000565555555555555555555555555555555555555555"
+    "5555555555555555555555555555555555555555555555555555555555555555"
+)
+
+# LAMZU's real files (stock, then with Dorsal's patch): the same sha256 over what the hub's code makes of them
+HUB_DIGESTS = {
+    "lamzu-maya-x": (
+        "b935042ae430b312ad0ca59fcf7d1710b57e7a6327ab5aa05987da6a37f5a674",
+        "7be927aea78ec0009861c3c078d836e95de23519e6e22051b88e6719f7351941"),
+    "lamzu-tachi": (
+        "983af363639720ae74d28b20afc4a6b4526b552957d59e0208d40978ec4c1f23",
+        "53ce96818f32210a4c5cfbce96f48836bbc5dee3ab568b6587d003ca9ba68e3d"),
+    "lamzu-inca": (
+        "131b6ccce695c5c3b48f8f8bbf24d89842d848b7818801375ca94e10093c44e5",
+        "b6702e821c9c4a21fb6a2dce3bdf89464b5a91b28e62c955db2086d2f39eb19b"),
+    "lamzu-maya": (
+        "99d9fb5760ef0eb7bb855c3570688c80382f1281041fc563aff6ebb62df3be44",
+        "4315e454941e97721a1cb4c93aff9f36a841771a97392624f2a1cba198b4391c"),
+    "lamzu-paro": (
+        "6c2a1337559de4e2a991beebbe0f4a4e9f5a1c8e51413761814bcbd8868563e3",
+        "d3c0cb68d7499b4efb259cbb2bf42be3f701f2a3d7d61e7775a0d8f877f29c63"),
+    "lamzu-thorn": (
+        "b6465f574d04ad2cbf876b566d10dce20eadf52d8f183d925990c8c002376005",
+        "9853f5a4b4b6acea36eabee54a9f856ce41a00d5e5b5b6c6de4c1cb4df0d90b8"),
+}
+
+
+def _made(pieces):
+    """An image from (address, length, seed) pieces, the bytes being a fixed pattern."""
+    ih = IntelHex()
+    for addr, n, seed in pieces:
+        for i in range(n):
+            ih[addr + i] = (i * 7 + seed) & 0xFF
+    return ih
+
+
+def _stream(packets):
+    """What a hub-way flash sends for these packets: all the program packets, then all the verifies."""
+    return (b"".join(flasher.program_packet(a, d, 0, fill=True) for a, d in packets)
+            + b"".join(flasher.verify_packet(a, 0) for a, _ in packets))
+
+
+@pytest.mark.parametrize("name, pieces, lens, digest", HUB_CASES, ids=[c[0] for c in HUB_CASES])
+def test_a_made_up_image_goes_out_the_way_the_hubs_own_code_sends_it(name, pieces, lens, digest):
+    """The expected bytes come from running LAMZU's own hex parser and packet builder (cut out of its web hub's
+    script) on the same image, not from this code: how long each packet is, where it goes, what follows the data."""
+    packets = flasher.hub_packets(_made(pieces))
+    assert [len(d) for _, d in packets] == lens
+    assert hashlib.sha256(_stream(packets)).hexdigest() == digest
+
+
+def test_the_hubs_packets_in_full_for_a_short_image():
+    packets = flasher.hub_packets(_made([(0x6000, 50, 3)]))
+    assert [flasher.program_packet(a, d, 0, fill=True).hex() for a, d in packets] == list(HUB_50_PROGRAM)
+    assert [flasher.verify_packet(a, 0).hex() for a, _ in packets] == list(HUB_50_VERIFY)
+    assert flasher.program_packet(0x6000, b"\x03", 0, fill=True).hex() == HUB_1_PROGRAM          # one byte, then all 0x55
+
+
+def test_a_gap_in_an_image_is_sent_as_zeros_the_way_the_hub_fills_it():
+    packets = flasher.hub_packets(_made([(0x6000, 20, 3), (0x6040, 10, 9)]))
+    image = b"".join(d for _, d in packets)
+    assert len(image) == 0x4A and image[20:0x40] == bytes(0x2C)           # 0x6014 to 0x603F, where the file has nothing
+    assert image[:20] == bytes((i * 7 + 3) & 0xFF for i in range(20))
+    assert image[0x40:] == bytes((i * 7 + 9) & 0xFF for i in range(10))
+    assert [a for a, _ in packets] == [0x6000, 0x6020, 0x6040]
+
+
+def test_hub_packets_start_at_the_files_first_address_and_step_by_32():
+    packets = flasher.hub_packets(_made([(0xFFE0, 100, 5)]))                # over the 64 KB line
+    assert [a for a, _ in packets] == [0xFFE0, 0x10000, 0x10020, 0x10040]
+    assert b"".join(d for _, d in packets) == bytes((i * 7 + 5) & 0xFF for i in range(100))
+
+
+@pytest.mark.parametrize("key", list(HUB_DIGESTS))
+def test_the_real_lamzu_images_go_out_the_way_the_hubs_own_code_sends_them(key):
+    """The files LAMZU's hub serves, stock and with Dorsal's one-byte patch, cut and worded by the hub's own code
+    (run in node on each) come to exactly what the flasher sends: every program packet, then every verify packet."""
+    path = REPO / "firmware" / fw.HUB_FILES[key][1]
+    if not path.exists():
+        pytest.skip("LAMZU firmware not downloaded (it's not in the repo)")
+    stock = fw.load_hex(path)
+    for image, digest in zip((stock, fw.apply_patch(stock)), HUB_DIGESTS[key]):
+        assert hashlib.sha256(_stream(flasher.hub_packets(image))).hexdigest() == digest
 
 
 # a mouse another program has open, and a bootloader that isn't quite what's expected
@@ -458,7 +705,7 @@ def test_an_unknown_image_goes_to_the_mouse_it_was_told_and_not_the_r5(bench, mo
     assert (other.vid, other.wired_pid) in hid.present                               # the R5 was left alone
     assert (other.vid, other.bootloader_pid) not in hid.present
     assert hid.opened[0] == f"{TACHI.vid:04x}:{TACHI.wired_pid:04x}".encode()
-    assert hid.sent.count(flasher.enter_bl_packet()) == 1
+    assert hid.sent.count(flasher.enter_bl_packet(flasher.HUB_DEVICE_ID)) == 1      # and the Tachi got the hub's way
 
 
 # what's on the bus

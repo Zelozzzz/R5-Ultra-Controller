@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The six LAMZU mice are flashed with the bytes LAMZU's own web hub sends. Before, they got the R5's
+  variants: byte 2 of every packet was 2, not 0, what follows the data was zeros, not 0x55s, the last
+  block was padded with FF, and every block got two verifies, not one. Now every program packet,
+  verify packet and command is the hub's, byte for byte (checked by running the hub's own code on the
+  six files, `tools/hub_check` runs that check again). The R5, M5 and R6 are flashed exactly as before.
+  Still nobody has flashed a real LAMZU.
+
 ## 1.10
 
 - Works with the M5 Ultra, R6 and R8 now, not just the R5 Ultra. Dorsal asks which
