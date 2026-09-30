@@ -57,7 +57,7 @@ class Hid:
       flip    writes packet 5 with a bit wrong   error   answers every verify with an error status
       hiccup  answers each verify with an error status the first time it's asked
       drop0   acknowledges the very first packet but never writes it
-      slowstart  doesn't answer the first three version queries
+      slowstart  doesn't answer the first three version queries (`slow` says how many)
       aligned reads whole 32-byte blocks from the image's start, whatever address it's asked for
       busy    says "busy" a few times before each verify answer
       late    still gives the previous answer the first time it's asked
@@ -79,6 +79,7 @@ class Hid:
         self.asked = set()
         self.enumerated = []
         self.versions = 0
+        self.slow = 3                         # slowstart: this many version queries get no answer
         self.bl_page = 0xFFFF                 # the usage page the bootloader lists itself under
         self.open_fails = 0                   # opens of the bootloader that fail before one works
         self.busy_app = False                 # the mouse can be listed but not opened, another program has it
@@ -108,7 +109,7 @@ class Hid:
             self.flash.clear()
         elif op == 0x80:                                                # the version query
             self.versions += 1
-            if self.mode == "slowstart" and self.versions <= 3:
+            if self.mode == "slowstart" and self.versions <= self.slow:
                 answer = bytearray(64)
         elif op == 0x02:                                                # a program packet
             k, self.programmed = self.programmed, self.programmed + 1
@@ -263,9 +264,25 @@ def test_the_version_query_is_asked_again_until_the_answer_looks_like_a_bootload
     assert sum(1 for d in hid.sent if d == version) == 4
     assert any("reading each 32-byte block back" in line for line in logs)
     hid, image = bench("silent", model=flow)                            # never answers: gives up after the tries
-    with pytest.raises(flasher.FlashError, match="No acknowledgement"):
+    tries = flasher.VENDOR_VERSION_TRIES if flow.vendor_flash else flasher.VERSION_TRIES
+    with pytest.raises(flasher.FlashError, match="never answered" if flow.vendor_flash else "No acknowledgement"):
         flasher.flash(image, log=lambda _m: None, readback=True)
-    assert sum(1 for d in hid.sent if d == version) == flasher.VERSION_TRIES
+    assert sum(1 for d in hid.sent if d == version) == tries
+    assert (flasher.erase_packet(_device(flow)) in hid.sent) is (not flow.vendor_flash)    # the vendors' way stops before it erases
+
+
+def test_the_vendors_way_waits_for_a_slow_bootloader_as_long_as_the_vendors_tools_do(bench, monkeypatch):
+    hid, image = bench("slowstart", model=TACHI)
+    hid.slow = 20                                                      # the first 20 version queries get no answer
+    sleeps = []
+    monkeypatch.setattr(flasher.time, "sleep", sleeps.append)
+    assert flasher.flash(image, log=lambda _m: None) is True
+    assert sum(1 for d in hid.sent if d == flasher.bl_version_packet(0)) == 21
+    assert sleeps.count(flasher.VENDOR_VERSION_WAIT) == 20 + 1         # half a second between the asks, and once after entering
+    hid, image = bench("slowstart", model=R5)                          # the R5's way asks 8 times and carries on anyway
+    hid.slow = 20
+    assert flasher.flash(image, log=lambda _m: None) is True
+    assert sum(1 for d in hid.sent if d == flasher.bl_version_packet()) == flasher.VERSION_TRIES
 
 
 @both_ways
@@ -329,9 +346,10 @@ def test_a_bootloader_that_stops_answering_verifies_is_said_so_by_the_unit_the_f
 
 
 @both_ways
-def test_a_bootloader_that_never_answers_stops_at_the_first_block(bench, flow):
+def test_a_bootloader_that_never_answers_stops_the_flash_the_vendors_way_before_the_erase(bench, flow):
     hid, image = bench("silent", model=flow)
-    with pytest.raises(flasher.FlashError, match="No acknowledgement programming packet 0"):
+    with pytest.raises(flasher.FlashError,
+                       match="stopped before erasing anything" if flow.vendor_flash else "No acknowledgement programming packet 0"):
         flasher.flash(image, log=lambda _m: None, readback=True)
     assert not hid.exited
 

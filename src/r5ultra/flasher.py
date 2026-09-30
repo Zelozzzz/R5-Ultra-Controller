@@ -46,6 +46,8 @@ PROGRAM_DELAY_4K = 0.005
 VERIFY_DELAY = 0.002
 VENDOR_SETTLE = 1.0             # the vendors' tools wait this long once the bootloader has answered, then two 50 ms pauses,
 VENDOR_PAUSE = 0.1              # before they erase, and two 50 ms pauses between programming and verifying. Only their way waits
+VENDOR_VERSION_TRIES = 50       # they ask for the version up to 50 times, half a second apart, and stop if it never
+VENDOR_VERSION_WAIT = 0.5       # looks like a bootloader's. Their way stops before erasing, the R5's carries on
 OK_STATUS = (0xA1, 0x02)        # first byte of a reply a bootloader that reports status is happy with
 READBACK_ROUNDS = 5             # the vendors' tools ask a stubborn verify again up to five times
 READBACK_POLLS = 30             # and ask a busy bootloader for its answer again without resending
@@ -261,15 +263,17 @@ def _read_back(dev, addr: int, expected: bytes, first: bool = False, device: int
                      f"It wasn't restarted.{hint}")
 
 
-def _version_reply(bl, device: int = DEVICE_ID) -> bytes:
+def _version_reply(bl, device: int = DEVICE_ID, tries: int = VERSION_TRIES, wait: float = 0) -> bytes:
     """The bootloader's answer to a version query, asked again until it looks like one (our B0 comes back)."""
     reply = b""
-    for _ in range(VERSION_TRIES):
+    for _ in range(tries):
         _send(bl, bl_version_packet(device))
         time.sleep(0.1)
         reply = _recv(bl)
         if _fields(reply) is not None:
             break
+        if wait:
+            time.sleep(wait)
     return reply
 
 
@@ -302,8 +306,14 @@ def _program_and_verify(bl, segments, packets, log: Log, progress: Progress = _n
     do it, where `segments` is the packets themselves, each verified (and read back) once."""
     device = VENDOR_DEVICE_ID if vendor else DEVICE_ID
     unit, one = ("blocks", "block") if vendor else ("segments", "segment")
-    reply = _version_reply(bl, device)
+    if vendor:
+        reply = _version_reply(bl, device, VENDOR_VERSION_TRIES, VENDOR_VERSION_WAIT)
+    else:
+        reply = _version_reply(bl, device)
     log(f"  Bootloader: {reply[:14].hex(' ')}")
+    if vendor and _fields(reply) is None:
+        raise FlashError("The mouse's install mode never answered the way the vendors' tools expect a bootloader to "
+                         f"(its last answer began {reply[:14].hex(' ')}), so Dorsal stopped before erasing anything.")
     reads_back = readback and _reports_status(reply)
 
     if vendor:
