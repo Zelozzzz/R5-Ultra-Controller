@@ -158,7 +158,7 @@ class _Dev:
 
     def send_feature_report(self, data):
         self.hid.sent.append(bytes(data[1:65]))
-        if bytes(data[1:65]) == flasher.enter_bl_packet(flasher.HUB_DEVICE_ID):    # the mouse restarts as its bootloader
+        if bytes(data[1:65]) == flasher.enter_bl_packet(flasher.VENDOR_DEVICE_ID):    # the mouse restarts as its bootloader
             self.hid.present.add((TACHI.vid, TACHI.bootloader_pid))
 
     def get_feature_report(self, _rid, _n):
@@ -198,7 +198,7 @@ def test_flashing_a_lamzu_uses_its_vendor_id_end_to_end(monkeypatch):
     flasher.flash(image, log=lambda _m: None)                        # the image says which mouse it is
     assert {vid for vid, _ in hid.asked} == {0x37B0}                 # never looked at 373E
     assert hid.opened[0] == b"37b0:0005" and b"37b0:0006" in hid.opened      # cable first, then the bootloader
-    assert flasher.enter_bl_packet(flasher.HUB_DEVICE_ID) in hid.sent and flasher.exit_bl_packet(flasher.HUB_DEVICE_ID) in hid.sent
+    assert flasher.enter_bl_packet(flasher.VENDOR_DEVICE_ID) in hid.sent and flasher.exit_bl_packet(flasher.VENDOR_DEVICE_ID) in hid.sent
     assert hid.opened[-1] == b"37b0:0005"                            # and the mouse is checked back at the end
 
 
@@ -210,7 +210,7 @@ def test_a_lamzu_bootloader_left_over_from_an_interrupted_flash_is_picked_up(mon
     logs = []
     flasher.flash(image, log=logs.append, model=TACHI)
     assert any("already in bootloader mode" in line for line in logs)
-    assert flasher.enter_bl_packet(flasher.HUB_DEVICE_ID) not in hid.sent and flasher.enter_bl_packet() not in hid.sent
+    assert flasher.enter_bl_packet(flasher.VENDOR_DEVICE_ID) not in hid.sent and flasher.enter_bl_packet() not in hid.sent
 
 
 def test_only_the_lamzu_receiver_visible_says_to_plug_the_cable_in(monkeypatch):

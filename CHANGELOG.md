@@ -2,13 +2,15 @@
 
 ## Unreleased
 
-- The six LAMZU mice are flashed with the bytes LAMZU's own web hub sends. Before, they got the R5's
-  variants: byte 2 of every packet was 2, not 0, what follows the data was zeros, not 0x55s, the last
-  block was padded with FF, and every block got two verifies, not one. Now every program packet,
-  verify packet and command is the hub's, byte for byte (checked by running the hub's own code on the
-  six files, `tools/hub_check` runs that check again). The R5, M5 and R6 are flashed exactly as before.
-  Still nobody has flashed a real LAMZU. `tools/virtual_mouse/enter_bootloader.py` shows the real firmware
-  of all nine mice restarts on the enter-bootloader command whatever byte 2 is.
+- Every mouse but the R5 is flashed with the bytes its maker's own tool sends: LAMZU's web hub for the six
+  LAMZU mice, Attack Shark's app for the M5 Ultra and R6 (the two have the same update code). Before, they
+  got the R5's variants: byte 2 of every packet was 2, not 0, what follows the data was zeros, not 0x55s,
+  the last block was padded with FF, and every block got two verifies, not one. Now every program packet,
+  verify packet and command is theirs, byte for byte (checked by running their own code on 20 images,
+  `tools/vendor_check` runs that check again), and it takes the same pauses between the steps. The R5 is
+  flashed exactly as before. Still nobody has flashed a real LAMZU, M5 or R6.
+  `tools/virtual_mouse/enter_bootloader.py` shows the real firmware of all nine mice restarts on the
+  enter-bootloader command whatever byte 2 is.
 
 ## 1.10
 

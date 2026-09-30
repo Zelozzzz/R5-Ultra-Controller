@@ -140,8 +140,9 @@ Wired only. The dongle can't flash. See
 Every mouse has its own bootloader id, see `models.py` (a LAMZU one keeps the mouse's own vendor id:
 `0x37B0:0x0006` on the Tachi).
 
-The table is the R5's way, which the R5, M5 and R6 get. The six LAMZU mice get LAMZU's web hub's version, which is
-the same steps with different bytes: byte 2 is `00` in every packet instead of `02`, everything from byte 11 on is
+The table is the R5's way, which only the R5 gets. Every other mouse gets its maker's own tool's version (LAMZU's web
+hub for the six LAMZU mice, Attack Shark's app for the M5 Ultra and R6, the same code in both), which is the same
+steps with different bytes: byte 2 is `00` in every packet instead of `02`, everything from byte 11 on is
 XOR `0x55` so what follows the data is `55` bytes, not zeros, the last program packet is as long as what's left of
 the file (the R5's way pads it with `FF`), and there's one verify per 32-byte block, not one per 16 bytes.
  Every program/verify packet is resent until the reply has `0xB0` at byte 5

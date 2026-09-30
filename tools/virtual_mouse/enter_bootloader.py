@@ -1,6 +1,7 @@
 """Does a mouse's real firmware react to the "enter the bootloader" command the same whatever byte 2 is?
 
-The flasher sends that command first. The R5's way puts 2 in byte 2, LAMZU's web hub puts 0. The virtual mouse runs the
+The flasher sends that command first. The R5's way puts 2 in byte 2, the vendors' own tools (Attack Shark's app,
+LAMZU's web hub) put 0. The virtual mouse runs the
 app firmware (the bootloader isn't part of the .hex), so this only looks at the app's side of it: it sends the command
 with a few values in byte 2 and checks that the firmware asks for a reset every time, and doesn't when nothing is sent.
 
@@ -28,7 +29,7 @@ from r5ultra import firmware as fw                # noqa: E402
 from r5ultra import flasher, models               # noqa: E402
 
 ASAR = Path(r"C:\ATTACK SHARK GAMING\resources\app.asar")
-BYTES = (flasher.HUB_DEVICE_ID, flasher.DEVICE_ID, 1, 0xFF)      # LAMZU's hub's, the R5's, and two nobody sends
+BYTES = (flasher.VENDOR_DEVICE_ID, flasher.DEVICE_ID, 1, 0xFF)   # the vendors' tools', the R5's, and two nobody sends
 
 
 def images():

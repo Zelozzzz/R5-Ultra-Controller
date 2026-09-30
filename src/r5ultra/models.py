@@ -65,7 +65,7 @@ class Model:
     has_battery: bool = True                 # False: it only pushes a charge level as a message, there's nothing to read
     has_firmware_readback: bool = True       # False: no version Dorsal knows how to ask for
     flash_readback: bool = True              # False: flashed on a real one without reading the blocks back, so it stays that way
-    hub_flash: bool = False                  # True: flashed with the bytes LAMZU's web hub sends, not the R5's (see flasher.py)
+    vendor_flash: bool = False               # True: flashed with the bytes its maker's own tool sends, not the R5's way (flasher.py)
 
     def fit_dpi(self, dpi: int, low: int = 100) -> int:
         """`dpi` inside this mouse's limits and on a value its sensor has."""
@@ -107,10 +107,12 @@ R5_ULTRA = Model("r5ultra", "R5 Ultra", 0x0046, 0x0047, 0xB046, "R5Ultra",
                  r"JXC_R5_Ultra_8K_Mouse_840_APP_.*\.hex$", tried="your mouse", photo="AttackShark/R5Ultra/Device_1.png",
                  flash_readback=False)      # it flashed fine on a real R5 without reading anything back, so it still does
 M5_ULTRA = Model("m5ultra", "M5 Ultra", 0x0051, 0x0050, 0xB051, "M5Ultra",
-                 r"JXC_M5_Ultra_8K_Mouse_840_APP_.*\.hex$", tried="virtual mouse", photo="AttackShark/M5Ultra/Device_1.png")
+                 r"JXC_M5_Ultra_8K_Mouse_840_APP_.*\.hex$", tried="virtual mouse", photo="AttackShark/M5Ultra/Device_1.png",
+                 vendor_flash=True)
 R6 = Model("r6", "R6", 0x0021, 0x0022, 0xB021, "R6",
            r"XMG_R6_8K_Mouse_840_APP_.*\.hex$", competitive=False, dpi_button=False,
-           competitive_since="0.0.3.1", tried="virtual mouse", photo="AttackShark/R6/Device_1.png")   # v0.0.3.1 on the web hub added it, found on the virtual mouse
+           competitive_since="0.0.3.1", tried="virtual mouse", photo="AttackShark/R6/Device_1.png",   # v0.0.3.1 on the web hub added it, found on the virtual mouse
+           vendor_flash=True)
 R8 = Model("r8", "R8", 0x003A, 0x003B, None, "R8", None, competitive=False,   # official config: TrackModeEnable 0
            dpi_button=False, photo="AttackShark/R8/Device_1.png")
 
@@ -186,7 +188,7 @@ def _same(brand, name, key, vid, wired, receivers, dpi_max, stages, lift, cable,
                  lift_off=tuple(f"{x} mm" for x in lift.split()), debounce=debounce,
                  polling_cable=cable, polling_receiver=receiver, polling_by_receiver=tuple(by_receiver),
                  photo=PHOTOS.get(key), led_spot=LED_SPOTS.get(key),
-                 hub_flash=bootloader is not None)      # the ones with a bootloader are the LAMZU six from LAMZU's hub
+                 vendor_flash=bootloader is not None)   # the ones with a bootloader are the LAMZU six from LAMZU's hub
 
 
 # from the hubs at xvalleyinno.top: CRDRAKO PANEL, LAMZU Aurora, UNIUS MOUSE HUB, RAWM HUB, WL MOUSE HUB.
