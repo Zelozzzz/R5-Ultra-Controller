@@ -1,11 +1,12 @@
 """Attack Shark's second platform, the MOUSE HUB web driver (controlhub.top/AttackShark, USB vendor
-3554, "CompX"), not the R5's, so it gets its own module. Two mice so far: the F1 Air and the X11 Ultra.
+3554, "CompX"), not the R5's, so it gets its own module. The F1 Air, the X11 Ultra, and every other model
+number in the hub's config (the V8, X8 Ultra, V5, R11 Ultra and the rest are among them, see HUB_MICE).
 
 Everything here comes from the hub's own code (v1.2.0). The F1 Air part was checked against kr0mka's
 web tool (github.com/kr0mka/AttackSharkF1Air, MIT), which was tried on a real F1 Air (8K receiver,
 mid 20). The X11 Ultra part against MontyMcK's Linux driver (github.com/MontyMcK/attack-shark-x11-
 ultra-linux, MIT), whose notes were checked on a real X11 Ultra (mid 11). Where they disagree the hub
-wins, unless a real mouse proved it wrong (see Client.online). Nobody here has either mouse, so where
+wins, unless a real mouse proved it wrong (see Client.online). Nobody here has any of these mice, so where
 nothing pins something down it says "not sure" next to it and the code does the careful thing.
 
 How it talks: output report 8 with 16 bytes, the answer comes back as input report 8 starting with
@@ -33,7 +34,9 @@ from collections import deque
 from typing import NamedTuple
 
 VID = 0x3554
-CABLE_PIDS = (0xF515, 0xF516)
+# F515 and F516 were in kr0mka's list, F5F6 and F50E are the hub config's other two cable ids for mice. Its
+# receivers F50D and F510 aren't here: LAMZU's Atlantis uses those too, and it speaks the R5's protocol
+CABLE_PIDS = (0xF515, 0xF516, 0xF5F6, 0xF50E)
 # FB44 is the 8K receiver (its firmware says so), F517 the one kr0mka tried. FB43 is a receiver in
 # the hub's config, kr0mka's list says cable. The mouse says which it is anyway (identify, type byte)
 RECEIVER_PIDS = (0xFB44, 0xF517, 0xFB43, 0xFB35)
@@ -111,14 +114,28 @@ class Spec(NamedTuple):
         return FIELDS_3950 if self.sensor == "3950" else FIELDS_3955
 
 
-# the model number a mouse reports (mid, in the hub's config) -> which mouse it is. Only numbers somebody
-# saw on a real mouse are in here: 20 was kr0mka's F1 Air (the hub's picture for 20 is the F1 Air too),
-# 11 MontyMcK's X11 Ultra. The others in the config (19, 21 and 22 next to the F1 Air, but their pictures are
-# other mice, and 1-5, 10, 12, 13-18, 23) could be any mouse, so nothing gets written to them
-MICE = {
-    20: Spec("f1air", "3955", 60000, LOD_3955),
-    11: Spec("x11ultra", "3950", 42000, LOD_3950, online_lies=True),
+# every model number (mid) in the hub's config, with the sensor and top DPI it has there. The hub has no
+# names for them, only a picture each (img/devices/mouse/7c<mid in hex>), and it treats them all the same:
+# the sensor decides where and how a DPI is stored, the rest of the table sits in the same place for all, and
+# nothing in its code looks at the model number itself. Every one of them has the "DPI Lighting Effect" in
+# the config, so each has a DPI light that can stay on. Two are known mice: 20 was kr0mka's F1 Air (the hub's
+# picture for 20 is the F1 Air too), 11 MontyMcK's X11 Ultra. The rest nobody here has tried: Dorsal writes
+# to them the way the hub does, and only once their owner picks the mouse (core._lighting_blocked)
+HUB_MICE = {
+    1: ("3950", 42000), 2: ("3950", 42000), 3: ("3950", 42000), 4: ("3950", 42000), 5: ("3950", 42000),
+    10: ("3950", 42000), 11: ("3950", 42000), 12: ("3950", 42000), 18: ("3950", 42000),
+    13: ("3955", 52000), 14: ("3955", 52000), 15: ("3955", 52000), 16: ("3955", 52000), 17: ("3955", 52000),
+    21: ("3955", 52000), 23: ("3955", 52000),
+    19: ("3955", 60000), 20: ("3955", 60000), 22: ("3955", 60000),
 }
+# the model number a mouse reports -> which mouse it is. Anything else (another number, another brand's
+# cid) gets nothing written. The X11 Ultra's "am I there" answer was wrong on a real one and nobody knows
+# about the unnamed ones, so for those a real read of the table counts too (a mouse that isn't there can't
+# answer a read)
+MICE = {mid: Spec(f"mousehub-{mid}", sensor, top, LOD_3950 if sensor == "3950" else LOD_3955, online_lies=True)
+        for mid, (sensor, top) in HUB_MICE.items()}
+MICE[20] = Spec("f1air", "3955", 60000, LOD_3955)
+MICE[11] = Spec("x11ultra", "3950", 42000, LOD_3950, online_lies=True)
 # the hub's battery curve: millivolts at 0, 5, 10 ... 100 %
 BATTERY_MV = (3050, 3420, 3480, 3540, 3600, 3660, 3720, 3760, 3800, 3840, 3880, 3920, 3940, 3960,
               3980, 4000, 4020, 4040, 4060, 4080, 4110)
@@ -441,7 +458,7 @@ class Client:
         return self._identified
 
     def identity(self) -> str | None:
-        """Its key in models.py ("f1air", "x11ultra") if it's a mouse in MICE, else None."""
+        """Its key in models.py ("f1air", "x11ultra", "mousehub-12") if it's a mouse in MICE, else None."""
         with self._lock:
             return self.spec.key if self._supported() else None
 

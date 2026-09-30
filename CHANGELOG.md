@@ -21,6 +21,15 @@
   firmware drives an RGB output that breathes for under a second after a DPI change, and that a one-byte change holds it at
   the top on the virtual mouse. Whether any of those mice has a LED behind it isn't known (WLMOUSE's pages put the RGB light
   on the dongle), so nothing in Dorsal uses that.
+- The rest of Attack Shark's Mouse Hub mice: the V8, X8 Ultra, V5, R11 Ultra and so on. The hub's config has no
+  names for them, only model numbers, so Dorsal asks the mouse its number (like it already did to tell the F1 Air
+  and X11 Ultra apart) and shows it as "Mouse Hub model 12" and so on, with the hub's own sensor, top DPI and
+  lift-off heights for that number. Every one of them has the hub's DPI light setting, so the LED stays on without
+  any firmware. Nobody has tried one, so nothing is written on its own until you pick it, and the picker only
+  shows one once it's plugged in. Two more cable ids from the hub's config are known too.
+- The mouse picker's "Use the ..." button is always on screen now (it was below the window's bottom edge at
+  1440x900), and the big numbers and the wordmark use Bahnschrift, the DIN-style font that comes with Windows.
+- The "Found a ..." notice says "a" or "an" the way the name is said ("an Maya X" before).
 
 ## 1.10
 

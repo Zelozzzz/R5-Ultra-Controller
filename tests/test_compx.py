@@ -109,8 +109,8 @@ def test_fewer_stages_than_the_active_one_lands_on_the_last():
     assert c.write_settings(active_stage=4)["active_stage"] == "unsupported"
 
 
-def test_nothing_gets_written_to_something_that_isnt_an_f1_air():
-    for dev in (compx.FakeDevice(mid=1), compx.FakeDevice(mid=22), compx.FakeDevice(cid=99)):   # 22: a lattice mouse
+def test_nothing_gets_written_to_a_number_the_hub_doesnt_have_or_to_another_brand():
+    for dev in (compx.FakeDevice(mid=6), compx.FakeDevice(mid=24), compx.FakeDevice(mid=99), compx.FakeDevice(cid=99)):
         assert client(dev).write_settings(polling=500) == {"polling": "different"}
         assert client(dev).read_settings() == {}
         assert not dev.writes
@@ -241,10 +241,29 @@ def test_each_mouse_only_writes_its_own_dpi_fields():
     assert writes and all(((f[2] << 8) | f[3], f[4]) in compx.FIELDS_3950 for f in writes)
 
 
-def test_only_mice_somebody_saw_are_written_to():
-    for mid in (1, 2, 3, 4, 5, 10, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23):
-        dev = compx.FakeDevice(mid=mid)
-        assert client(dev).write_settings(polling=500) == {"polling": "different"} and not dev.writes, mid
+@pytest.mark.parametrize("mid", sorted(compx.HUB_MICE))
+def test_every_number_in_the_hubs_config_is_written_the_way_the_hub_writes_it(mid):
+    # the hub has names for none of them but the F1 Air's picture (V8, X8 Ultra, V5 and R11 Ultra are in there
+    # somewhere) and treats them all alike: the sensor decides where a DPI goes, the top DPI comes with the number
+    sensor, top = compx.HUB_MICE[mid]
+    dev = compx.FakeDevice(mid=mid)
+    c = client(dev)
+    got = c.write_settings(stage_dpis=[400, 800, top + 10000], stage_count=3, polling=2000, stage_colors=["#123456"] * 3)
+    assert set(got.values()) == {"match"}, got
+    assert c.read_settings()["stage_dpis"][:3] == [400, 800, top]            # its own top, not the F1 Air's
+    fields = compx.FIELDS_3950 if sensor == "3950" else compx.FIELDS_3955
+    writes = [f for f in dev.sent if f[0] == compx.WRITE]
+    assert writes and all(((f[2] << 8) | f[3], f[4]) in fields for f in writes)
+    assert dev.value(compx.OFF_LED_MODE) == 1                                 # the DPI light is on for good
+    assert c.identity() == ({20: "f1air", 11: "x11ultra"}.get(mid) or f"mousehub-{mid}")
+
+
+def test_an_unnamed_hub_mouse_that_says_it_isnt_there_but_answers_is_used_and_a_sleeping_one_isnt():
+    dev = compx.FakeDevice(mid=12, online_byte=0)          # like the real X11 Ultra: says 0 while it's awake
+    assert client(dev).write_settings(ripple=True) == {"ripple": "match"}
+    asleep = compx.FakeDevice(mid=12)
+    asleep.asleep = True
+    assert client(asleep).write_settings(ripple=True) == {"ripple": "different"} and not asleep.writes
 
 
 # through Dorsal
@@ -492,3 +511,61 @@ def test_a_detected_mouse_nobody_has_tried_gets_nothing_written_until_its_owner_
     r5.choose_model("r5ultra")
     r5.cfg["model_chosen"] = False
     assert models.R5_ULTRA.tried and not r5._lighting_blocked()      # the R5 has been tried, no waiting for it
+
+
+# the Mouse Hub's other model numbers (V8, X8 Ultra, V5, R11 Ultra and the rest), through the app
+
+@pytest.mark.parametrize("mid, top, lods", [(12, 42000, ["0.7 mm", "1 mm", "2 mm"]),
+                                             (13, 52000, ["0.7 mm", "0.9 mm", "1.2 mm", "1.4 mm", "1.6 mm"]),
+                                             (22, 60000, ["0.7 mm", "0.9 mm", "1.2 mm", "1.4 mm", "1.6 mm"])])
+def test_an_unnamed_hub_mouse_is_found_by_its_number_with_the_hubs_limits(monkeypatch, tmp_path, mid, top, lods):
+    c, dev = _plug(monkeypatch, tmp_path, mid=mid)
+    c._show_connection("2.4 GHz dongle")
+    assert c.model.key == f"mousehub-{mid}" and c.model.name == f"Mouse Hub model {mid}"
+    snap = c.snapshot()
+    assert snap["dpi_max"] == top and snap["lod_values"] == lods
+    choices = c.mouse_choices()
+    hub = [m["key"] for m in choices if m["key"].startswith("mousehub-")]
+    assert hub == [f"mousehub-{mid}"] and [m["key"] for m in choices if m["detected"]] == hub   # only the one plugged in
+    assert not dev.writes                                  # and nothing written, its owner hasn't said it's theirs
+
+
+def test_the_picker_has_no_unnamed_hub_mice_until_one_is_plugged_in(monkeypatch, tmp_path):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    keys = {m["key"] for m in core.Controller().mouse_choices()}
+    assert {"f1air", "x11ultra"} <= keys and not [k for k in keys if k.startswith("mousehub-")]
+
+
+def test_someone_who_picked_the_f1_air_but_plugged_in_another_hub_mouse_is_told_and_it_waits_for_them(monkeypatch, tmp_path):
+    c, dev = _plug(monkeypatch, tmp_path, mid=13)
+    c.choose_model("f1air")
+    c._show_connection("2.4 GHz dongle")
+    assert c.model.key == "mousehub-13"
+    note = c.notices[-1]
+    assert note["title"] == "Found a Mouse Hub model 13" and "isn't written to until you pick it there" in note["text"]
+    c.resolve_lighting()
+    c._send_static()
+    _wait(c, "Lighting")
+    assert not dev.writes
+    c.choose_model("mousehub-13")                          # "yes, that's my mouse"
+    c._send_static()
+    _wait(c, "Lighting")
+    assert dev.writes and dev.value(compx.OFF_LED_MODE) == 1          # and its DPI light stays on
+
+
+def test_every_hub_number_has_a_mouse_with_the_f1_airs_ids_and_none_takes_the_lamzu_atlantis_receivers():
+    assert {m.key for m in models.MOUSE_HUB} == {f"mousehub-{mid}" for mid in compx.HUB_MICE if mid not in (11, 20)}
+    for m in models.MOUSE_HUB:
+        assert m.ids == models.F1_AIR.ids and not m.listed and m.led_built_in and not m.live_lighting, m.key
+        assert m.photo.endswith(f"/7c{int(m.key.split('-')[1]):02x}.png")      # the hub's picture for that number
+    assert models.by_ids(0x3554, 0xF5F6) is models.F1_AIR                        # the ids alone still say F1 Air first
+    hub_ids = {i for m in models.MODELS if m.protocol == "compx" for i in m.ids}
+    assert not hub_ids & set(models.by_key("lamzu-atlantis").ids)               # F50D / F510 are LAMZU's too
+
+
+def test_names_get_a_or_an_the_way_they_are_said():
+    names = ("R5 Ultra", "M5 Ultra", "F1 Air", "X11 Ultra", "Inca", "Atlantis", "Maya X", "Mouse Hub model 12",
+             "Beast Max", "Float 88", "Huan M")
+    assert [core._a(n) for n in names] == ["an R5 Ultra", "an M5 Ultra", "an F1 Air", "an X11 Ultra", "an Inca",
+                                          "an Atlantis", "a Maya X", "a Mouse Hub model 12", "a Beast Max",
+                                          "a Float 88", "a Huan M"]

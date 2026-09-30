@@ -46,13 +46,14 @@ read back, it flashes the way it always did), but only against a pretend bootloa
 | Attack Shark F1 Air | not needed, its DPI light has an "always on" setting | yes, with that setting | a pretend F1 Air made from the hub's code (`compx.FakeDevice`, `tests/test_compx.py`) | Dorsal talks to it (`compx.py`). Nobody has tried a real one. Which HID interface it answers on over the cable is a guess |
 | Attack Shark X11 (the older one, USB 1D57) | not needed, its light has a "Static DPI" mode | should, untried: the mode is the vendor's, whether it stays on while the mouse sleeps isn't known | a pretend X11 (`xseries.FakeDevice`, `tests/test_xseries.py`). Dorsal rebuilds the vendor's own packets for all 310 DPI values it sends byte for byte | Dorsal talks to it over its cable only (`xseries.py`). Nobody has tried a real one here |
 | Attack Shark X11 Ultra | not needed, same "always on" setting | yes, with that setting | a pretend X11 Ultra (`compx.FakeDevice(mid=11)`) with the bytes from a Linux driver that was checked on a real one | Dorsal talks to it (`compx.py`). Nobody has tried a real one here. Its picture is the hub's (7c0b) |
+| Attack Shark V8, X8 Ultra, V5, R11 Ultra and the other Mouse Hub mice | not needed, same "always on" setting | yes, with that setting | a pretend one for every model number in the hub's config (`compx.FakeDevice(mid=...)`), and the real page against a pretend model 12 | Dorsal talks to them (`compx.py`) by the model number the mouse reports and shows them as "Mouse Hub model 12" and so on. Which number is which mouse isn't known yet, and nobody has tried one |
 
 ### Attack Shark F1 Air
 
 Attack Shark's second platform: the MOUSE HUB web driver at controlhub.top/AttackShark, USB vendor 3554
-("CompX"), not the R5's. Cable F515 / F516, receivers FB44 (8K), F517, FB43, FB35. The hub's config
-calls it cid 124, mid 20, with a PAW3955 (60000 DPI). Mids 19, 21 and 22 sit next to it in the
-config, but the hub's pictures for them are other mice, so Dorsal leaves them alone.
+("CompX"), not the R5's. Cable F515 / F516 / F5F6 / F50E, receivers FB44 (8K), F517, FB43, FB35. The
+hub's config calls it cid 124, mid 20, with a PAW3955 (60000 DPI). The config has 18 more model numbers,
+those are the rest of the Mouse Hub mice (further down).
 
 - **where it comes from:** the hub's own JavaScript (v1.2.0), checked against kr0mka's F1 Air web
   tool (github.com/kr0mka/AttackSharkF1Air, MIT), which was tried on a real one (8K receiver, mid 20).
@@ -73,8 +74,8 @@ config, but the hub's pictures for them are other mice, so Dorsal leaves them al
   waits until you stop dragging (0.8 s), and only settings that changed get written. Lift-off is 0.7 /
   0.9 / 1.2 / 1.4 / 1.6 mm. Sleep has 1, 2, 5 and 10 min (the mouse has no 30 min or never). No buttons,
   macros or Competitive Mode yet
-- **safety:** it asks the mouse who it is first and only writes to an F1 Air, and through the receiver
-  only while the mouse is awake. It never sends the factory reset (0x09), pairing, profile switch or the
+- **safety:** it asks the mouse who it is first and only writes to a model number that's in the hub's
+  config, and through the receiver only while the mouse is awake. It never sends the factory reset (0x09), pairing, profile switch or the
   receiver's updater command (0x0D), and only writes the settings above
 - **not sure yet:** the receiver FB44 answers on interface 1, collection 5 (from its firmware). For the
   cable Dorsal takes the vendor usage page and checks the answer, nobody has looked
@@ -85,7 +86,7 @@ config, but the hub's pictures for them are other mice, so Dorsal leaves them al
 
 Same platform as the F1 Air (Mouse Hub, USB vendor 3554, the same USB ids), so it lives in `compx.py`
 too. The mouse says which one it is: cid 124 and model number 11 here, 20 for the F1 Air. A mouse with
-any other number gets nothing written.
+a number that isn't in the hub's config, or another brand's cid, gets nothing written.
 
 - **where it comes from:** the hub's own JavaScript, checked against MontyMcK's Linux driver
   (github.com/MontyMcK/attack-shark-x11-ultra-linux, MIT). Their notes say they checked it on a real
@@ -101,6 +102,32 @@ any other number gets nothing written.
 - **not checked even by them:** sleep time, ripple, and the lift-off names (they only saw the default,
   code 1. 0.7 mm = 3 and 2 mm = 2 come from the hub)
 - **picture:** the hub's own, `controlhub.top/AttackShark/img/devices/mouse/7c0b.png` (cid 7c, mid 0b in hex)
+
+### the rest of the Mouse Hub mice (V8, X8 Ultra, V5, R11 Ultra and so on)
+
+Attack Shark sells more mice on the Mouse Hub than the F1 Air and the X11 Ultra, but the hub's config has
+no names for them, only model numbers: 1 to 5, 10, 12 to 19 and 21 to 23. They have the F1 Air's USB ids,
+so Dorsal asks the mouse its number, the same way it tells the F1 Air and X11 Ultra apart, and calls it
+"Mouse Hub model 12" and so on. The mouse picker only shows one once it's plugged in.
+
+- **why it's fine to write to them:** the hub's code treats every number the same. The sensor in the
+  config (PAW3950 or PAW3955) decides where a DPI is stored and how, the top DPI (42000, 52000 or 60000)
+  goes with the number, and everything else sits at the same place in the table for all of them. Nothing
+  in its code looks at the model number itself. Dorsal writes them with the same code as the F1 Air (a
+  3955) and the X11 Ultra (a 3950), which other people checked on real ones. Its table matches the hub's
+  config number for number (sensor and top DPI, 19 numbers)
+- **the light:** every number has the hub's "DPI Lighting Effect" (off, always on, breathing) in the
+  config, so every one has a DPI light, and Dorsal keeps it on the way it does on the F1 Air. No firmware
+- **what nobody knows:** which number is which mouse, and whether one of them has a quirk like the X11
+  Ultra's "are you there" byte, so for these a table read that works counts as "there" too. Nobody has
+  tried one, so like every untried mouse nothing gets written on its own until you pick it in the setup
+- **USB ids:** cable F515, F516, F5F6 and F50E, receivers FB44, F517, FB43 and FB35. The hub also lists
+  the receivers F50D and F510, but LAMZU's Atlantis uses those with the R5's protocol, so Dorsal leaves
+  them to it: a Mouse Hub mouse on one of those receivers isn't found yet, on its cable it is
+- **picture:** the hub's own for that number, `controlhub.top/AttackShark/img/devices/mouse/7c<number in
+  hex>.png`, fetched once it's the one you have
+
+If you have one of these, say which mouse it is and what number Dorsal shows, and it gets its real name.
 
 ### Attack Shark X11 (the older one, USB 1D57)
 
@@ -223,7 +250,6 @@ goes through the same code it always did (`tests/test_art.py` holds it to what i
 |---|---|
 | AJAZZ AJ159 APEX | driver not downloaded yet (its site has a bot check). Its firmware link points at Attack Shark's own server, so it might be the same platform |
 | AJAZZ AJ179 APEX | its driver is the online-only AJAZZ app, no firmware inside, and the app's pictures say it's a Panchip PAN1080 chip, which the virtual mouse can't run |
-| Attack Shark V8, X8 Ultra, V5, R11 Ultra | same Mouse Hub platform as the F1 Air and X11 Ultra, and none of them needs firmware (the DPI light has a setting). What's missing is which model number each one reports. Dorsal only writes to numbers somebody saw on a real mouse |
 | Attack Shark R2, R3, X1, X3 Pro | their app only downloads firmware when a real mouse is plugged in |
 | CRDRAKO KO-ONE | same platform id (373E) and it has lighting, but the firmware is for an nRF54H20, which the virtual mouse doesn't do |
 | MCHOSE G3 Ultra | firmware is listed but Google Drive blocked the file |

@@ -43,6 +43,14 @@ def _binding_label(binding) -> str | None:
     return None if binding is None else binding.label
 
 
+def _a(name: str) -> str:
+    """The name with "a" or "an" in front, the way it's said: an R5 Ultra, an F1 Air, an Inca, a Maya X,
+    a Mouse Hub model 12 (a letter like R, M, F or X followed by a number is said with a vowel first)."""
+    first = name[:1].upper()
+    vowel = first in "AEIOU" or (first in "FHLMNRSX" and name[1:2].isdigit())
+    return f"{'an' if vowel else 'a'} {name}"
+
+
 class Controller:
     def __init__(self):
         self.lock = threading.RLock()
@@ -371,8 +379,8 @@ class Controller:
         self.log(f"Connected mouse: {model.name}")
         untried = not model.tried and model.key not in self.cfg.get("confirmed_models", ())
         if chosen:
-            self.notice(f"Found an {model.name}",
-                        f"You picked the {old.name} in setup, but the mouse plugged in is an {model.name}. "
+            self.notice(f"Found {_a(model.name)}",
+                        f"You picked the {old.name} in setup, but the mouse plugged in is {_a(model.name)}. "
                         f"Dorsal switched to the {model.name}. You can change it in Settings → Mouse."
                         + (" Nobody has tried Dorsal on it, so it isn't written to until you pick it there." if untried else ""),
                         kind="info")
@@ -433,6 +441,8 @@ class Controller:
         detected = connected_model(prefer=self.model) if self.connected else None
         out = []
         for m in models.MODELS:
+            if not m.listed and m is not detected and m is not self.model:
+                continue                          # a Mouse Hub number with no name: only once it's plugged in
             # a picture if there's a real one here already, no 40 identical drawings
             pictured = device_image.has_picture(m) or (m.app_folder and device_image.find_official_app()) \
                 or m is models.DEFAULT or m is self.model

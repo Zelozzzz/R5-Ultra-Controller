@@ -134,7 +134,7 @@ src/
     flasher.py        flashing over the bootloader
     fw_install.py     the installer: find software, build, detect the cable
     models.py         every mouse Dorsal knows: ids, limits, what each one has
-    compx.py          Attack Shark's Mouse Hub mice (F1 Air, X11 Ultra)
+    compx.py          Attack Shark's Mouse Hub mice (F1 Air, X11 Ultra, the rest by model number)
     xseries.py        Attack Shark's X series on vendor 1D57 (the older X11)
     ipi.py            the IPI Float 88
     wizard.py         console firmware wizard (src/flash_wizard.py)
@@ -176,7 +176,7 @@ Tests: `pip install -r requirements-dev.txt`, then `python -m pyflakes src tests
 - Mice: R5 Ultra (firmware v0.00.12.00), M5 Ultra (v0.00.08.00 or v0.00.09.00), R6 (v0.00.02.00 or v0.00.03.01) and R8. Dorsal asks which one you have the first time it opens.
 - The LED patch is built for the R5, M5 and R6, but only the R5 has been flashed on a real mouse. The M5 and R6 ones passed the checks on the virtual mouse in `tools/virtual_mouse` and nobody has flashed a real one yet, so Dorsal says so before it installs. The official app has no firmware for the R8, so there's no LED patch for it. Dorsal talks to it with the same commands as the others, which nobody has tried on a real R8 or the virtual mouse either.
 - Six LAMZU mice (Maya X, Tachi, Inca, Maya, Paro, Thorn) get the same one-byte patch. Their firmware isn't in the Attack Shark app, it comes from LAMZU's web hub and you pick the .hex yourself. Same story as the M5 and R6: it passed the virtual mouse and nobody has flashed a real one. Details in [docs/FIRMWARE.md](docs/FIRMWARE.md#lamzu).
-- Dorsal also knows the F1 Air and X11 Ultra (Attack Shark's Mouse Hub mice, their DPI light has an always-on setting so they don't need firmware), the older Attack Shark X11 (on its cable only, its light has a "Static DPI" mode that should do the same, untried), and the IPI Float 88, and about 40 mice from other brands (LAMZU, WLMOUSE, RAWM, UNIUS, CRDRAKO) whose official apps use the
+- Dorsal also knows the F1 Air and X11 Ultra (Attack Shark's Mouse Hub mice, their DPI light has an always-on setting so they don't need firmware) and the rest of the Mouse Hub mice (V8, X8 Ultra, V5, R11 Ultra and so on, found by the model number the mouse reports, since the hub has no names for them), the older Attack Shark X11 (on its cable only, its light has a "Static DPI" mode that should do the same, untried), and the IPI Float 88, and about 40 mice from other brands (LAMZU, WLMOUSE, RAWM, UNIUS, CRDRAKO) whose official apps use the
   same protocol as the R5. Nobody has tried Dorsal on any of those yet, and apart from the six LAMZU ones above there's no LED firmware for them.
 - The full list of which mice and firmware versions work (and which don't yet) is in [docs/MICE.md](docs/MICE.md).
 - Effects run on your PC, so Dorsal has to be running (tray is fine). Static colors, macros and buttons are saved on the mouse.

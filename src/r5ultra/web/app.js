@@ -1191,6 +1191,7 @@ async function openMousePicker(firstRun) {
     <div class="mouse-pick">${shark.map((x) => `<button class="mouse-card" data-key="${x.key}">
       ${x.photo ? `<img src="${x.photo}" alt="">` : ""}<b>${esc(x.name)}</b>
       <small>${x.detected ? '<span class="badge on">plugged in</span><br>' : ""}${x.firmware ? "LED firmware available" : x.led_built_in ? "LED stays on, no firmware needed" : "No LED firmware"}</small></button>`).join("")}</div>
+    ${shark.some((x) => x.key.startsWith("mousehub-")) ? "" : `<p class="hub-hint">Got a V8, X8 Ultra, V5, R11 Ultra or another mouse that uses Attack Shark's Mouse Hub? Plug it in and it shows up here: the mouse tells Dorsal which one it is.</p>`}
     ${brands.length ? `<h3 class="mouse-others-head">Other brands</h3>
     <p class="sub">Their settings come from their official apps, so Dorsal should work with them. Nobody has tried one yet.${ledBrands.length ? ` The ${ledBrands.join(" and ")} ones that have LED firmware say so when you pick them.` : " There's no LED firmware for them."}</p>
     <div class="mouse-others">${brands.map((b) => `<div class="mouse-brand"><b>${esc(b)}</b><div class="mouse-minis">${list.filter((x) => x.brand === b)

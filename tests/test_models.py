@@ -22,7 +22,7 @@ def test_every_usb_id_belongs_to_one_mouse():
 
 def test_the_mouse_hub_mice_share_ids_and_the_mouse_says_which_it_is():
     hub = [m for m in models.MODELS if m.protocol == "compx"]
-    assert [m.key for m in hub] == ["f1air", "x11ultra"]
+    assert [m.key for m in hub] == ["f1air", "x11ultra"] + [m.key for m in models.MOUSE_HUB]   # named ones first
     assert len({m.ids for m in hub}) == 1                  # same ids, told apart by the number they report
     assert {spec.key for spec in compx.MICE.values()} == {m.key for m in hub}
     assert models.by_ids(0x3554, 0xF515) is models.F1_AIR

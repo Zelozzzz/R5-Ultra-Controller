@@ -182,7 +182,7 @@ def test_the_first_run_picker_downloads_nothing_and_only_shows_pictures_already_
     choices = c.mouse_choices()
     _wait_for_photo_jobs(c)
     assert asked == []
-    assert [m["key"] for m in choices] == [m.key for m in models.MODELS]
+    assert [m["key"] for m in choices] == [m.key for m in models.MODELS if m.listed]   # unnamed ones once plugged in
     assert not any("pending" in m for m in choices)
     by_key = {m["key"]: m for m in choices}
     assert by_key["r5ultra"]["photo"]                       # the one that ships with Dorsal

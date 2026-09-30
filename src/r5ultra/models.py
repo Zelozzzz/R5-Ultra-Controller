@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from . import compx          # the Mouse Hub's model numbers (standard library only, no loop back here)
+
 VID = 0x373E
 
 CABLE = (125, 250, 500, 1000)
@@ -66,6 +68,7 @@ class Model:
     has_firmware_readback: bool = True       # False: no version Dorsal knows how to ask for
     flash_readback: bool = True              # False: flashed on a real one without reading the blocks back, so it stays that way
     vendor_flash: bool = False               # True: flashed with the bytes its maker's own tool sends, not the R5's way (flasher.py)
+    listed: bool = True                      # False: only in the setup picker once it's the one plugged in (no name to pick it by)
 
     def fit_dpi(self, dpi: int, low: int = 100) -> int:
         """`dpi` inside this mouse's limits and on a value its sensor has."""
@@ -289,8 +292,10 @@ IPI_FLOAT_88 = Model("ipi-float-88", "Float 88", 0x1015, 0x1014, None, "", None,
                      photo="https://shan.ipigame.cn/src/assets/mouse/IPI_PIAO.png")   # ipi.py, from IPI's web driver
 # Attack Shark's second platform, the MOUSE HUB web driver (controlhub.top), see compx.py. Model number
 # 20 in that hub's config, PAW3955. Nobody has tried it here
+HUB_CABLES = (0xF516, 0xF5F6, 0xF50E)          # next to F515, see compx.CABLE_PIDS
+HUB_RECEIVERS = (0xF517, 0xFB43, 0xFB35)       # next to FB44
 F1_AIR = Model("f1air", "F1 Air", 0xF515, 0xFB44, None, "", None, competitive=False, vid=0x3554,
-               more_cables=(0xF516,), more_receivers=(0xF517, 0xFB43, 0xFB35), dpi_max=60000, stages=6,
+               more_cables=HUB_CABLES, more_receivers=HUB_RECEIVERS, dpi_max=60000, stages=6,
                lift_off=("0.7 mm", "0.9 mm", "1.2 mm", "1.4 mm", "1.6 mm"), debounce=(15, 1),
                polling_cable=ALL, polling_receiver=ALL, protocol="compx", live_lighting=False, led_built_in=True,
                dpi_steps=((42000, 1), (60000, 2)),      # every DPI up to 42000, even ones above
@@ -303,7 +308,7 @@ F1_AIR = Model("f1air", "F1 Air", 0xF515, 0xFB44, None, "", None, competitive=Fa
 # 7c0b (hex of cid 124 and mid 11, like the F1 Air's 7c14): the black forged-carbon shell Attack Shark sells the
 # X11 Ultra with, and its cyan LED slit is drawn in, so Dorsal lights that like the R6's
 X11_ULTRA = Model("x11ultra", "X11 Ultra", 0xF515, 0xFB44, None, "", None, competitive=False, vid=0x3554,
-                  more_cables=(0xF516,), more_receivers=(0xF517, 0xFB43, 0xFB35), dpi_max=42000, stages=6,
+                  more_cables=HUB_CABLES, more_receivers=HUB_RECEIVERS, dpi_max=42000, stages=6,
                   lift_off=("0.7 mm", "1 mm", "2 mm"), debounce=(15, 1), polling_cable=ALL, polling_receiver=ALL,
                   protocol="compx", live_lighting=False, led_built_in=True,
                   dpi_steps=((30000, 50), (42000, 100)), sleep_minutes=(1, 2, 5, 10),
@@ -323,7 +328,28 @@ X11 = Model("x11", "X11", 0xFA55, None, None, "", None, competitive=False, vid=0
             # the picture on the vendor's web hub (szslxd-tech.com, the one Attack Shark's driver page links to).
             # Its file name has a hash in it, if the hub is rebuilt this stops working and Dorsal draws the mouse
             photo="https://szslxd-tech.com/assets/X11-DpjEREMO.png", led_spot=(0.494, 0.485, 0.07, 0.014))
-OTHER_PROTOCOLS = (IPI_FLOAT_88, F1_AIR, X11_ULTRA, X11)
+
+
+def _hub_mouse(mid: int) -> Model:
+    """One of the Mouse Hub's other model numbers (compx.HUB_MICE). Attack Shark sells more mice on that hub (V8,
+    X8 Ultra, V5, R11 Ultra...), but its config has only numbers for them, no names. They have the F1 Air's USB ids,
+    so Dorsal asks the mouse which one it is, and it only shows up in the picker once it's plugged in. The limits
+    are the hub's: the sensor decides the lift-off heights and DPI steps, the top DPI goes with the number. Its
+    picture is the hub's for that number. Nobody has tried one"""
+    sensor, top = compx.HUB_MICE[mid]
+    if sensor == "3950":
+        lift, steps = ("0.7 mm", "1 mm", "2 mm"), ((30000, 50), (42000, 100))
+    else:
+        lift, steps = ("0.7 mm", "0.9 mm", "1.2 mm", "1.4 mm", "1.6 mm"), ((42000, 1), (top, 2))
+    return Model(f"mousehub-{mid}", f"Mouse Hub model {mid}", 0xF515, 0xFB44, None, "", None, competitive=False,
+                 vid=0x3554, more_cables=HUB_CABLES, more_receivers=HUB_RECEIVERS, dpi_max=top, stages=6,
+                 lift_off=lift, debounce=(15, 1), polling_cable=ALL, polling_receiver=ALL, protocol="compx",
+                 live_lighting=False, led_built_in=True, dpi_steps=steps, sleep_minutes=(1, 2, 5, 10),
+                 photo=f"https://controlhub.top/AttackShark/img/devices/mouse/7c{mid:02x}.png", listed=False)
+
+
+MOUSE_HUB = tuple(_hub_mouse(mid) for mid in compx.HUB_MICE if compx.MICE[mid].key.startswith("mousehub-"))
+OTHER_PROTOCOLS = (IPI_FLOAT_88, F1_AIR, X11_ULTRA, X11) + MOUSE_HUB
 
 MODELS = ATTACK_SHARK + SAME_PROTOCOL + OTHER_PROTOCOLS
 DEFAULT = R5_ULTRA

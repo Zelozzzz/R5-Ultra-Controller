@@ -741,6 +741,7 @@ label.srow { cursor: pointer; }
 .modal[data-kind="mouse"] .mouse-others { flex: 0 1 auto; min-height: 6rem; max-height: none; }
 .modal[data-kind="mouse"] #pick-note { margin: .8rem 0 0; }
 .modal[data-kind="mouse"] #pick-note:empty { display: none; }
+.modal[data-kind="mouse"] .hub-hint { margin: .8rem 0 0; font-size: .88rem; color: var(--muted); }
 .steps4 { display: grid; gap: 1rem; margin: 1.2rem 0; }
 .step4 { display: grid; grid-template-columns: 2rem 1fr; gap: .9rem; }
 .step4 .badge { width: 2rem; height: 2rem; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: .85rem;
