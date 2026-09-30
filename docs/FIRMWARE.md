@@ -290,6 +290,11 @@ The R5, M5 and R6 keep the R5's way, packet for packet (`tests/test_flasher.py` 
 `hub_flash` in `models.py` is what picks the way. The tests pin the hub's bytes for made-up images and,
 when the files are in `firmware/`, for the real ones (the hashes come from the hub's code, not from Dorsal's).
 
+One step could be looked at without the bootloader: the first one, the command that sends the mouse into it. The real
+firmware of all nine mice (R5, M5, R6 and the six LAMZU ones) restarts itself when it gets that command, and does
+the same with 0, 2, 1 or FF in byte 2 (`tools/virtual_mouse/enter_bootloader.py`, on the virtual mouse), so that step
+doesn't depend on which of the two ways Dorsal sends it. What the bootloader does with the rest can't be seen.
+
 What isn't the hub's: the pauses. Dorsal waits 1.5 seconds after the erase where the hub asks for a status
 until it's ready, and 5 ms every 4 KB where the hub waits 1 ms, and the order the hub calls its steps in
 isn't in the part of its script that was saved (the steps themselves are). Longer pauses shouldn't hurt.

@@ -60,6 +60,9 @@ python tools/virtual_mouse/checkup.py --only led settings # some groups
 - `dorsal_check.py` runs the whole Dorsal app (core.Controller) against each
   virtual mouse: connect, read settings, Apply, stage count, colors, DPI click,
   Spectrum, health check, firmware installer
+- `enter_bootloader.py` sends each firmware the "enter the bootloader" command with different values in byte 2
+  (the R5's way puts 2 there, LAMZU's web hub 0) and checks it restarts itself the same each time, and not without
+  the command. It only sees the app firmware's side, the bootloader isn't in the .hex
 - `patch_all.py` makes the LED patch for every mouse in the official app, saves
   `firmware/<mouse>_patched.hex` and tests stock vs patched
 - `old_patches.py` runs the R5 patches that didn't keep the LED on (patches C, D and E in

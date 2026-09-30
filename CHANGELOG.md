@@ -7,7 +7,8 @@
   block was padded with FF, and every block got two verifies, not one. Now every program packet,
   verify packet and command is the hub's, byte for byte (checked by running the hub's own code on the
   six files, `tools/hub_check` runs that check again). The R5, M5 and R6 are flashed exactly as before.
-  Still nobody has flashed a real LAMZU.
+  Still nobody has flashed a real LAMZU. `tools/virtual_mouse/enter_bootloader.py` shows the real firmware
+  of all nine mice restarts on the enter-bootloader command whatever byte 2 is.
 
 ## 1.10
 
