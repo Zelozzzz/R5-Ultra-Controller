@@ -15,7 +15,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.13 (BEAST MAX 8K Mouse_1_000_Chip_App_v01.00.02.13_20260617(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -52,13 +52,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-beast-mini
 
@@ -71,7 +71,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.10 (BEAST MINI 8K Mouse_1_000_Chip_App_v01.00.02.10_20260829(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 26000])
 **takes what Dorsal offers**
@@ -108,13 +108,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 96, 193) at 0.40 s and is lit until 0.80 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 96, 193) at 0.40 s and is lit until 0.80 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xb014 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xb014 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-beast-mini-pro
 
@@ -127,7 +127,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.13 (BEAST MINI PRO 8K Mouse_1_000_Chip_App_v01.00.02.13_20260829-(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -164,13 +164,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 98, 197) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 98, 197) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc304 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc304 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-beast-x
 
@@ -183,7 +183,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.11 (BEAST X 8K Mouse_1_000_Chip_App_v01.00.02.11_20260819-v506u7.hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 26000])
 **takes what Dorsal offers**
@@ -220,13 +220,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.80 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.80 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xb0f8 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xb0f8 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-beast-x-pro
 
@@ -239,7 +239,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.12 (BEAST X PRO 8K Mouse_1_000_Chip_App_v01.00.02.12_20260819-(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -276,13 +276,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-beast-miao
 
@@ -295,7 +295,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.11 (MIAO 8K Mouse_1_000_Chip_App_v01.00.02.11_20260829-(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -332,13 +332,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 98, 197) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 98, 197) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc2fc from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc2fc from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-strider
 
@@ -351,7 +351,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.20 (STRIDER 8K Mouse_1_000_Chip_App_v01.00.02.20_20260819-(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -388,13 +388,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-sword-x
 
@@ -407,7 +407,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.15 (SWORD X 8K Mouse_1_000_Chip_App_v01.00.02.15_20260819-(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -444,13 +444,13 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 
 ## wlmouse-ying
 
@@ -463,7 +463,7 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ reports the firmware version its file name says (1.0.2.20 (YING 8K Mouse_1_000_Chip_App_v01.00.02.20_20260819-(v506u6).hex))
 - ✅ answers a battery read (Battery(percent=0, charging=False, asleep=False))
 - ℹ️ which sensor it says is inside (doesn't answer that)
-- ℹ️ the LED is driven on (P0.20, P0.22, P0.24)
+- ℹ️ the firmware drives an RGB output on (P0.20, P0.22, P0.24)
 - ✅ watchdog is on and never trips in 10 s idle (timeout 2000 ms)
 - ℹ️ factory DPI stages ([400, 800, 1600, 3200, 6400, 30000])
 **takes what Dorsal offers**
@@ -500,11 +500,11 @@ booted on the fake chip and talked to with Dorsal's own USB code. Dorsal's table
 - ✅ none of the packets Dorsal sends can crash it (78 kinds)
 - ℹ️ 400 random packets (98 crashed it (it restarts, like a real one would))
 - ✅ and it still answers afterwards
-**led**
+**rgb output**
 
-- ℹ️ the LED before a DPI stage change (dark)
-- ℹ️ the LED after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
-**keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)**
+- ℹ️ the RGB output before a DPI stage change (dark)
+- ℹ️ the RGB output after the DPI stage is changed by command (lights up 0.05 s after it, peaks at (9, 97, 195) at 0.40 s and is lit until 0.85 s)
+**holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)**
 
-- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
+- ℹ️ changing the byte at 0xc2a8 from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors (stock {'1.2 s': (0, 0, 0), '21 s': (0, 0, 0), 'new color': (0, 0, 0), 'faults': 0, 'watchdog': 0}, changed {'1.2 s': (200, 100, 50), '21 s': (200, 100, 50), 'new color': (10, 200, 30), 'faults': 0, 'watchdog': 0})
 

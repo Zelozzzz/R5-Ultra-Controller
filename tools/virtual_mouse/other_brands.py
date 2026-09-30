@@ -6,8 +6,9 @@ boots the firmware, then checks that it runs cleanly and answers Dorsal, that it
 that mouse (DPI, polling rate, lift-off, debounce, sleep, the switches), that changed settings are saved and survive a
 restart, that Dorsal's own app code can Apply and read it all back, and that nothing Dorsal sends (or random junk)
 crashes it. What the firmware takes that Dorsal doesn't offer is only noted. The buttons aren't checked, their pins
-aren't known. The LED is timed after a DPI stage change (by command), and there's a try at keeping it lit that is only
-noted too: it's not something Dorsal installs.
+aren't known. Its RGB output is timed after a DPI stage change (by command). Nobody knows if there's a LED on the mouse
+behind it (WLMOUSE's pages put the RGB light on the dongle), so the try at holding it on is only noted too: it's not
+something Dorsal installs.
 
     python tools/virtual_mouse/other_brands.py                # every one whose .hex is in the repo's firmware/ folder
     python tools/virtual_mouse/other_brands.py wlmouse-ying   # one
@@ -53,12 +54,12 @@ def find_file(key: str) -> Path | None:
     return next((f for f in sorted((REPO / "firmware").glob("*.hex")) if f.name.startswith(start)), None)
 
 
-# The LED breathes once after a DPI stage change (up, then down, then dark, all in under a second). It's a small state
-# machine: a rising state goes on to a falling one when it reaches the top. This is the spot where it does:
+# The RGB output breathes once after a DPI stage change (up, then down, then dark, all in under a second). It's a small
+# state machine: a rising state goes on to a falling one when it reaches the top. This is the spot where it does:
 #   movw r1,#0xffff / ldr r2,[pc,#?] / str r1,[r2] / movs r1,#3 / ldr r2,[pc,#?] / strb r1,[r2] / ldr r1,[pc,#?] /
 #   ldrh r1,[r1,#2] / ldr r2,[pc,#?] / str r1,[r2]
-# and the "movs r1,#3" (falling) becoming "movs r1,#4" (rising again) keeps it at the top instead. A try, not something
-# Dorsal installs: nothing but the virtual mouse has seen it.
+# and the "movs r1,#3" (falling) becoming "movs r1,#4" (rising again) holds it at the top instead. A try, not something
+# Dorsal installs: nothing but the virtual mouse has seen it, and nobody knows if a LED is behind the output.
 LED_TOP = re.compile(rb"\x4f\xf6\xff\x71.\x4a\x11\x60(\x03)\x21.\x4a\x11\x70.\x49\x49\x88.\x4a\x11\x60", re.S)
 
 
@@ -96,7 +97,7 @@ def find_receiver_flag(rig, prof) -> int | None:
 
 
 def led_after_a_change(mouse, image: bytes, base: int) -> dict:
-    """Boots this image, sets a color, changes the DPI stage and looks at the LED at 1.2 s and 20 s, then after a new color."""
+    """Boots this image, sets a color, changes the DPI stage and looks at the RGB output at 1.2 s and 20 s, then after a new color."""
     rig = checkup.Rig(mouse, image, base)
     m, vm, prof = rig.mouse, rig.vm, rig.profile
     m.command(p.lightness(prof, 255))
@@ -142,7 +143,7 @@ def probe(key: str, path: Path, verbose: bool, junk: int = 400) -> list[dict]:
     r(b is not None and b.percent is not None, "answers a battery read", b)
     sensor = m.read_sensor_model()
     r(True, "which sensor it says is inside", p.SENSORS.get(sensor, sensor) if sensor is not None else "doesn't answer that", info=True)
-    r(True, "the LED is driven on", ", ".join(vm.led_pins().get("PWM0", [])) or "no PWM0 pins", info=True)
+    r(True, "the firmware drives an RGB output on", ", ".join(vm.led_pins().get("PWM0", [])) or "no PWM0 pins", info=True)
     rig.run(10)
     r(vm.watchdog_resets == 0 and vm.wdt, "watchdog is on and never trips in 10 s idle",
       f"timeout {vm.wdt['timeout'] / 1000:.0f} ms" if vm.wdt else "watchdog never started")
@@ -309,7 +310,7 @@ def probe(key: str, path: Path, verbose: bool, junk: int = 400) -> list[dict]:
         m.command(p.reset_profile(no))
     r(m.read_battery() is not None, "and it still answers afterwards")
 
-    r.start("led")
+    r.start("rgb output")
     rig.fresh()
     color = (9, 99, 199)
     m.command(p.lightness(prof, 255))
@@ -322,17 +323,17 @@ def probe(key: str, path: Path, verbose: bool, junk: int = 400) -> list[dict]:
         rig.run(0.05)
         samples.append(vm.pwm_output())
     lit = [i for i, out in enumerate(samples) if out not in (None, (0, 0, 0))]
-    r(True, "the LED before a DPI stage change", idle if idle not in (None, (0, 0, 0)) else "dark", info=True)
+    r(True, "the RGB output before a DPI stage change", idle if idle not in (None, (0, 0, 0)) else "dark", info=True)
     if lit:
         peak = max(lit, key=lambda i: sum(samples[i]))
         dark_again = next((i for i in range(lit[-1] + 1, len(samples)) if samples[i] in (None, (0, 0, 0))), None)
-        r(True, "the LED after the DPI stage is changed by command",
+        r(True, "the RGB output after the DPI stage is changed by command",
           f"lights up {(lit[0] + 1) * 0.05:.2f} s after it, peaks at {samples[peak]} at {(peak + 1) * 0.05:.2f} s and is lit until "
           f"{(lit[-1] + 1) * 0.05:.2f} s" + ("" if dark_again is not None else ", still lit at 4 s"), info=True)
     else:
-        r(True, "the LED after the DPI stage is changed by command", "never lit in 4 s", info=True)
+        r(True, "the RGB output after the DPI stage is changed by command", "never lit in 4 s", info=True)
 
-    r.start("keeping the LED lit (a try on the virtual mouse, nothing Dorsal installs)")
+    r.start("holding the RGB output on (a try on the virtual mouse, nothing Dorsal installs)")
     hits = [m_.start(1) for m_ in LED_TOP.finditer(image)]
     if len(hits) != 1:
         r(True, "where the breathing goes from rising to falling", f"found {len(hits)} times, so no try", info=True)
@@ -344,7 +345,7 @@ def probe(key: str, path: Path, verbose: bool, junk: int = 400) -> list[dict]:
     patched = led_after_a_change(mouse, bytes(changed), base)
     works = (stock["21 s"] in (None, (0, 0, 0)) and patched["21 s"] == (200, 100, 50) and patched["new color"] == (10, 200, 30)
              and not patched["faults"] and not patched["watchdog"])
-    r(True, f"changing the byte at {at:#x} from 0x03 to 0x04 keeps the LED lit and it follows Dorsal's colors" if works
+    r(True, f"changing the byte at {at:#x} from 0x03 to 0x04 holds the RGB output on and it follows Dorsal's colors" if works
       else f"changing the byte at {at:#x} from 0x03 to 0x04", f"stock {stock}, changed {patched}", info=True)
     return r.rows
 

@@ -327,14 +327,19 @@ virtual mouse can't run, so Dorsal has no patch for them.
 
 The WLMOUSE Beast mice with an nRF52840 (Beast Max, Mini, Mini Pro, X, X Pro, Miao, Strider, Sword X, Ying) have the same
 command handler, and their firmware runs on the virtual mouse (`tools/virtual_mouse/other_brands.py`, results in
-`RESULTS-other-brands.md`). The LED timer LAMZU has isn't in it, but they aren't without a DPI light: their RGB LED
-(P0.20, P0.22 and P0.24) breathes once in the stage's color after a DPI stage change, up for 0.4 s and down again by
-0.85 s, and then it's dark. It's a small state machine, and it goes from a rising state to a falling one when it reaches the
+`RESULTS-other-brands.md`). The LED timer LAMZU has isn't in it. What it does have is an RGB output (P0.20, P0.22 and
+P0.24) that breathes once in the stage's color after a DPI stage change, up for 0.4 s and down again by 0.85 s, and then
+it's dark. Whether there's a LED on the mouse behind those pins isn't known: WLMOUSE's own pages put the RGB light (battery
+and connection) on the dongle, and none of the ones checked says the mouse itself has a DPI light. So Dorsal has no LED patch
+for them. If someone with one of these can say it really has a LED, that's when it's worth building one.
+
+For the record, the breathing is a small state machine, and it goes from a rising state to a falling one when it reaches the
 top: `movs r1, #3`, found by its code (the same ten instructions, once in each of the nine files, at 0xC2A8 in five of them).
-On the virtual mouse, making that `movs r1, #4` (the byte 0x03 becomes 0x04) keeps it at the top instead: the LED goes up to the
-stage's color and stays there for as long as it was watched (about 20 s), follows Dorsal's colors and brightness, and nothing crashes,
-on all nine. That is a try and nothing more: Dorsal doesn't install it, these images aren't in its list, nobody has flashed a
-WLMOUSE, and what the other LED signals (battery, pairing) do with it held is unknown.
+On the virtual mouse, making that `movs r1, #4` (the byte 0x03 becomes 0x04) holds it at the top instead: the output goes up to
+the stage's color and stays there for as long as it was watched (about 20 s), follows Dorsal's colors and brightness, and
+nothing crashes, on all nine. That says what the code does on the virtual mouse and nothing about a real mouse: Dorsal doesn't
+install it, these images aren't in its list, nobody has flashed a WLMOUSE, and what the other signals (battery, pairing) do
+with it held is unknown.
 
 ## Patches that didn't work
 
