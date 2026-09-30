@@ -46,3 +46,25 @@ sends the pieces one after the other. Dorsal does what LAMZU's hub does, and non
 What this doesn't check is how a real bootloader answers, nothing here talks to one. The pauses between the
 packets aren't compared either. `tests/test_flasher.py` keeps the vendors' bytes for a few made-up images and, when the
 files are there, for the real ones (the hashes are of what the vendors' code makes, not of what Dorsal makes).
+
+## check_models.py
+
+The same idea for the mouse table: `models.py` says its numbers come from the vendors' hub configs, and this checks that.
+
+```
+python tools/vendor_check/check_models.py --configs path/to/a/folder/of/the/json/files
+```
+
+The folder holds the hubs' `Config/env-models.json` files (any name, they're read as they are): one from each hub at
+`https://www.xvalleyinno.top/<hub folder>/Config/env-models.json` (LAMZU, WL2, Rawm, CRDRAKO, BlackLotus, MAMBASNAKE,
+AttackShark) and the one in `web/Config/env-models.json` inside Attack Shark's `app.asar`. For every mouse in them that
+Dorsal knows it compares the top DPI, the DPI stages, the lift-off distances, the polling rates over the cable and through
+each receiver, the receivers themselves, the bootloader and firmware file for the LAMZU ones that have firmware, and the
+protocol flag. It prints what differs (exit code 1), some notes on what a config says that Dorsal has no place for, and
+the mice a hub lists that Dorsal doesn't know, which is how a mouse a hub added later shows up.
+
+On 2026-09-29 it compared 371 things on 49 mice and found no difference. The notes it had: the two Atlantis mice that
+the LAMZU hub marks as CompX (their hub adds a pairing page for those, Dorsal has no pairing), the receivers Dorsal has for
+the Thorn V2 and Maya X V2 beyond the config's, and the sleep times Dorsal offers that a hub's own list doesn't have (2 minutes on
+most). The other thing in the configs that Dorsal doesn't have is three RAWM NYX60 entries, which are keyboards.
+
