@@ -53,6 +53,19 @@ def test_other_brands_are_on_the_list_and_only_six_lamzu_have_firmware():
     assert models.IPI_FLOAT_88.protocol == "ipi" and models.IPI_FLOAT_88.is_cable(0x1056)
 
 
+def test_the_nrf54_lamzu_mice_only_get_the_sleep_times_their_hub_lists():
+    """LAMZU's hub lists 1, 5, 10, 15, 20 and 25 minutes for the 54H20 and LM20 mice and 10 s to 30 min for the older
+    ones. The older firmware takes more than that (the virtual mouse ran 1, 2, 5, 30 minutes and never on all six of
+    them), the nRF54 ones can't be run, so only those are held to their hub's list."""
+    nrf54 = ["lamzu-thorn-v2-54h20-0030", "lamzu-thorn-v2-54h20-0040", "lamzu-orcus", "lamzu-maya-x-lm20", "lamzu-mini-lm20",
+             "lamzu-maya-m-lm20", "lamzu-maya-lm20", "lamzu-orcus-v2-lm20"]
+    assert [m.key for m in models.MODELS if m.sleep_minutes == models.NRF54_SLEEP] == nrf54
+    from r5ultra import protocol
+    assert set(models.NRF54_SLEEP) <= set(protocol.SLEEP_CHOICES)
+    for key in ("lamzu-tachi", "lamzu-maya-m-54h20", "lamzu-atlantis", "wlmouse-beast-x"):
+        assert models.by_key(key).sleep_minutes is None                 # everything Dorsal has
+
+
 def test_a_shared_receiver_goes_to_the_mouse_you_picked():
     beast_x = models.by_key("wlmouse-beast-x")
     first = models.by_ids(0x36A7, 0xA882)

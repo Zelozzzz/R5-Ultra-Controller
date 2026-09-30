@@ -179,8 +179,15 @@ LED_SPOTS = {
 }
 
 
+# the LAMZU mice with an nRF54 chip (54H20 or LM20 in their names) list their sleep times as 1, 5, 10, 15, 20 and 25 minutes
+# in their hub config, the older ones as 10 s to 30 min. The older firmware takes more than its hub offers (the virtual
+# mouse tried 1, 2, 5, 30 minutes and never), nobody can run the nRF54 ones, so those only get the times of Dorsal's that
+# are on their hub's list
+NRF54_SLEEP = (1, 5, 10)
+
+
 def _same(brand, name, key, vid, wired, receivers, dpi_max, stages, lift, cable, receiver,
-          by_receiver=(), debounce=(20, 1), bootloader=None) -> Model:
+          by_receiver=(), debounce=(20, 1), bootloader=None, sleep=None) -> Model:
     """A mouse from another brand's hub on the same protocol. Numbers straight from its hub config
     (`bootloader` is its DeviceBLPID there, the vendor id is the same as the mouse's)."""
     return Model(key, name, wired, receivers[0], bootloader, "", None, competitive=False, brand=brand, vid=vid,
@@ -188,6 +195,7 @@ def _same(brand, name, key, vid, wired, receivers, dpi_max, stages, lift, cable,
                  lift_off=tuple(f"{x} mm" for x in lift.split()), debounce=debounce,
                  polling_cable=cable, polling_receiver=receiver, polling_by_receiver=tuple(by_receiver),
                  photo=PHOTOS.get(key), led_spot=LED_SPOTS.get(key),
+                 sleep_minutes=sleep,
                  vendor_flash=bootloader is not None)   # the ones with a bootloader are the LAMZU six from LAMZU's hub
 
 
@@ -224,9 +232,9 @@ SAME_PROTOCOL = (
           CABLE, FROM_1000, by_receiver=((0x002B, CABLE), (0x002A, FROM_500))),
     _same("LAMZU", "Maya M (54H20)", "lamzu-maya-m-54h20", 0x37B0, 0x002C, (0x002E,), 30000, 5, "0.7 1 2", FROM_500, FROM_500),
     _same("LAMZU", "Thorn V2 (54H20)", "lamzu-thorn-v2-54h20-0030", 0x37B0, 0x0030, (0x0032,), 50000, 5, "0.7 1 2",
-          FROM_500, FROM_500),
+          FROM_500, FROM_500, sleep=NRF54_SLEEP),
     _same("LAMZU", "Thorn V2 (54H20, 0040)", "lamzu-thorn-v2-54h20-0040", 0x37B0, 0x0040, (0x002E,), 50000, 5, "0.7 1 2",
-          FROM_500, FROM_500),
+          FROM_500, FROM_500, sleep=NRF54_SLEEP),
     _same("LAMZU", "DM198 (54H20)", "lamzu-dm198-54h20", 0x37B0, 0x0034, (0x0036,), 30000, 5, "0.7 1 2", FROM_500, FROM_500),
     _same("LAMZU", "DM198 OP (54H20)", "lamzu-dm198-op-54h20", 0x37B0, 0x0038, (0x0036,), 30000, 5, "0.7 1 2",
           FROM_500, FROM_500),
@@ -234,12 +242,12 @@ SAME_PROTOCOL = (
     _same("LAMZU", "Maya (54H20)", "lamzu-maya-54h20", 0x37B0, 0x003C, (0x0036,), 30000, 5, "0.7 1 2", FROM_500, FROM_500),
     _same("LAMZU", "Atlantis Mini (54H20)", "lamzu-atlantis-mini-54h20", 0x37B0, 0x003E, (0x003F,), 30000, 5, "0.7 1 2",
           FROM_500, (125, 500, 1000, 2000, 4000, 8000)),
-    _same("LAMZU", "Orcus", "lamzu-orcus", 0x37B0, 0x0042, (0x0036,), 50000, 5, "0.7 1 2", FROM_500, FROM_500),
-    _same("LAMZU", "Maya X (LM20)", "lamzu-maya-x-lm20", 0x37B0, 0x0044, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500),
-    _same("LAMZU", "Mini (LM20)", "lamzu-mini-lm20", 0x37B0, 0x0046, (0x0048, 0x0054), 50000, 5, "0.7 1 2", FROM_500, FROM_500),
-    _same("LAMZU", "Maya M (LM20)", "lamzu-maya-m-lm20", 0x37B0, 0x0052, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500),
-    _same("LAMZU", "Maya (LM20)", "lamzu-maya-lm20", 0x37B0, 0x0050, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500),
-    _same("LAMZU", "Orcus V2 (LM20)", "lamzu-orcus-v2-lm20", 0x37B0, 0x0056, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500),
+    _same("LAMZU", "Orcus", "lamzu-orcus", 0x37B0, 0x0042, (0x0036,), 50000, 5, "0.7 1 2", FROM_500, FROM_500, sleep=NRF54_SLEEP),
+    _same("LAMZU", "Maya X (LM20)", "lamzu-maya-x-lm20", 0x37B0, 0x0044, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500, sleep=NRF54_SLEEP),
+    _same("LAMZU", "Mini (LM20)", "lamzu-mini-lm20", 0x37B0, 0x0046, (0x0048, 0x0054), 50000, 5, "0.7 1 2", FROM_500, FROM_500, sleep=NRF54_SLEEP),
+    _same("LAMZU", "Maya M (LM20)", "lamzu-maya-m-lm20", 0x37B0, 0x0052, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500, sleep=NRF54_SLEEP),
+    _same("LAMZU", "Maya (LM20)", "lamzu-maya-lm20", 0x37B0, 0x0050, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500, sleep=NRF54_SLEEP),
+    _same("LAMZU", "Orcus V2 (LM20)", "lamzu-orcus-v2-lm20", 0x37B0, 0x0056, (0x0048,), 50000, 5, "0.7 1 2", FROM_500, FROM_500, sleep=NRF54_SLEEP),
     # UNIUS
     _same("UNIUS", "Black Lotus", "unius-black-lotus", 0x373E, 0x003C, (0x003D,), 26000, 5, "1 2", (500, 1000), FROM_500,
           debounce=(18, 2)),
