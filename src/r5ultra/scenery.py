@@ -144,10 +144,11 @@ def snow_tile(size: int = 512, count: int = 46, radius: tuple = (0.8, 2.4), seed
     return Image.merge("RGBA", (white, white, white, alpha))
 
 
-def mouse_layers(photo: Image.Image, width: int, height: int, led_spot: tuple | None = None) -> dict:
+def mouse_layers(photo: Image.Image, width: int, height: int, led_spot: tuple | None = None,
+                 dark_holes: bool = False) -> dict:
     from .art import PhotoMouseArt
     art = PhotoMouseArt(width, height, "#000000", photo, backdrop=Image.new("RGBA", (1, 1), (0, 0, 0, 0)),
-                        led_spot=led_spot)
+                        led_spot=led_spot, dark_holes=dark_holes)
     white = Image.new("L", art.size, 255)
     x0, y0, x1, y1 = art.mouse_box
     return {"base": art.base_rgba,

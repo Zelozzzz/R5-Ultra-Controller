@@ -42,7 +42,7 @@ def _blur(img: Image.Image, radius: float) -> Image.Image:
 class PhotoMouseArt:
 
     def __init__(self, width: int, height: int, bg: str, photo: Image.Image,
-                 backdrop: Image.Image | None = None, led_spot: tuple | None = None):
+                 backdrop: Image.Image | None = None, led_spot: tuple | None = None, dark_holes: bool = False):
         self.size = (width, height)
         W, H = size = (width * 2, height * 2)
         src = photo.crop(photo.getchannel("A").getbbox())
@@ -60,6 +60,16 @@ class PhotoMouseArt:
         hull = _blur(grown, r).point(lambda v: 255 if v > 236 else 0)
         hull = _blur(ImageChops.lighter(hull, alpha), 1.0)
         holes = ImageChops.subtract(hull, alpha)
+        if dark_holes:
+            # this picture has its holes painted black instead of see-through (the Float 88's, the Beast Miao's), so
+            # the pure black cells inside the shell are the holes: in both pictures the holes are black (0 or 1 of 255)
+            # and the shell's darkest shading starts a few steps up. Shrinking then growing the black parts drops
+            # thin dark lines and edges and keeps the cells, grown a little past where the resize blurred their rims
+            inside = alpha.point(lambda v: 255 if v > 200 else 0)
+            black = ImageChops.multiply(ImageOps.grayscale(mouse).point(lambda v: 255 if v < 5 else 0), inside)
+            k = max(3, int(mw * 0.012) | 1)
+            cells = black.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k + 2))
+            holes = ImageChops.lighter(holes, _blur(cells, 1.0))
         # solid shells (R6) light up through a little LED window instead of holes. the photo has it
         # blue, so find it, turn it into a dark grey (keeps its shading) and let the light layers color it
         red, _, blue, _ = mouse.split()

@@ -132,3 +132,26 @@ def test_the_led_spots_belong_to_mice_that_exist_and_make_sense():
             assert 0.1 < cx < 0.9 and 0.1 < cy < 0.9 and 0 < w < 0.3 and 0 < h < 0.2, m.key
     assert models.by_key("lamzu-paro").led_spot == models.LED_SPOTS["lamzu-paro"]
     assert models.by_key("r5ultra").led_spot is None and models.by_key("lamzu-tachi").led_spot is None
+
+
+def test_a_picture_with_its_holes_painted_black_is_lit_through_them_only_when_the_mouse_says_so():
+    """The Float 88's and the Beast Miao's pictures: the holes are opaque black cells, not see-through, so on their
+    own they'd count as a solid shell. The mouse's dark_holes flag says the black cells are the holes."""
+    photo = shell((60, 60, 64), lines=False)
+    d = ImageDraw.Draw(photo)
+    for fy in (0.5, 0.6, 0.7):
+        for fx in (0.3, 0.5, 0.7):
+            r = W * 0.06
+            d.ellipse((W * fx - r, H * fy - r, W * fx + r, H * fy + r), fill=(0, 0, 0, 255))
+    d.line([(W * 0.3, H * 0.4), (W * 0.7, H * 0.4)], fill=(240, 20, 20, 255), width=5)     # a printed design
+    d.line([(W * 0.2, H * 0.3), (W * 0.8, H * 0.3)], fill=(8, 8, 8, 255), width=2)         # a thin dark seam
+    plain, marked = lit(photo), lit(photo, dark_holes=True)
+    assert at(plain, "glow", 0.5, 0.6) < 25                     # opaque black: nothing to shine through
+    assert at(marked, "glow", 0.5, 0.6) > 60                    # told the black cells are holes: lit like the R5's
+    assert at(marked, "glow", 0.5, 0.4) < 25                    # the red design stays dark
+    assert at(marked, "glow", 0.5, 0.3) < 25                    # a thin dark line isn't a hole
+    assert at_rgb(marked, 0.5, 0.4)[0] > 180                    # and the design is still red in the picture
+
+
+def test_only_the_float_88_and_the_beast_miao_have_their_holes_painted_black():
+    assert {m.key for m in models.MODELS if m.dark_holes} == {"ipi-float-88", "wlmouse-beast-miao"}

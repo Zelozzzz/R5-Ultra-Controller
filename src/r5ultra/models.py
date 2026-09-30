@@ -69,6 +69,9 @@ class Model:
     flash_readback: bool = True              # False: flashed on a real one without reading the blocks back, so it stays that way
     vendor_flash: bool = False               # True: flashed with the bytes its maker's own tool sends, not the R5's way (flasher.py)
     listed: bool = True                      # False: only in the setup picker once it's the one plugged in (no name to pick it by)
+    # its picture paints the holes black instead of see-through (IPI's Float 88, WLMOUSE's Beast Miao), so the art
+    # takes the dark cells inside the shell as the holes to glow through
+    dark_holes: bool = False
 
     def fit_dpi(self, dpi: int, low: int = 100) -> int:
         """`dpi` inside this mouse's limits and on a value its sensor has."""
@@ -190,7 +193,7 @@ NRF54_SLEEP = (1, 5, 10)
 
 
 def _same(brand, name, key, vid, wired, receivers, dpi_max, stages, lift, cable, receiver,
-          by_receiver=(), debounce=(20, 1), bootloader=None, sleep=None) -> Model:
+          by_receiver=(), debounce=(20, 1), bootloader=None, sleep=None, dark_holes=False) -> Model:
     """A mouse from another brand's hub on the same protocol. Numbers straight from its hub config
     (`bootloader` is its DeviceBLPID there, the vendor id is the same as the mouse's)."""
     return Model(key, name, wired, receivers[0], bootloader, "", None, competitive=False, brand=brand, vid=vid,
@@ -198,7 +201,7 @@ def _same(brand, name, key, vid, wired, receivers, dpi_max, stages, lift, cable,
                  lift_off=tuple(f"{x} mm" for x in lift.split()), debounce=debounce,
                  polling_cable=cable, polling_receiver=receiver, polling_by_receiver=tuple(by_receiver),
                  photo=PHOTOS.get(key), led_spot=LED_SPOTS.get(key),
-                 sleep_minutes=sleep,
+                 sleep_minutes=sleep, dark_holes=dark_holes,
                  vendor_flash=bootloader is not None)   # the ones with a bootloader are the LAMZU six from LAMZU's hub
 
 
@@ -260,7 +263,7 @@ SAME_PROTOCOL = (
     _same("WLMOUSE", "Huan", "wlmouse-huan", 0x36A7, 0xA864, (0xA863,), 30000, 6, "0.7 1 2", ALL, ALL),
     _same("WLMOUSE", "Huan M", "wlmouse-huan-m", 0x36A7, 0xA859, (0xA863,), 50000, 6, "0.7 1 2", ALL, ALL),
     _same("WLMOUSE", "Beast Miao", "wlmouse-beast-miao", 0x36A7, 0xA867, (0xA866, 0xA882), 30000, 6, "0.7 1 2", CABLE, ALL,
-          by_receiver=((0xA882, CABLE),)),
+          by_receiver=((0xA882, CABLE),), dark_holes=True),      # its picture has the holes painted black, like the Float 88's
     _same("WLMOUSE", "Strider", "wlmouse-strider", 0x36A7, 0xA873, (0xA872, 0xA882), 30000, 6, "0.7 1 2", CABLE, ALL,
           by_receiver=((0xA882, CABLE),)),
     _same("WLMOUSE", "Ying", "wlmouse-ying", 0x36A7, 0xA875, (0xA874, 0xA882), 30000, 6, "0.7 1 2", CABLE, ALL,
@@ -289,7 +292,9 @@ IPI_FLOAT_88 = Model("ipi-float-88", "Float 88", 0x1015, 0x1014, None, "", None,
                      # IPI's app keeps a color per DPI stage for it, so it probably has a DPI light. Colors go into
                      # the settings table and nobody knows if that wears the mouse's flash, so no animated effects
                      live_lighting=False, dpi_steps=((26000, 50),), sleep_minutes=(),
-                     photo="https://shan.ipigame.cn/src/assets/mouse/IPI_PIAO.png")   # ipi.py, from IPI's web driver
+                     # ipi.py, from IPI's web driver. The shell is the R5 Ultra's lattice (same holes, same triangles),
+                     # and the picture has the holes painted black, so the art goes by darkness to light them
+                     photo="https://shan.ipigame.cn/src/assets/mouse/IPI_PIAO.png", dark_holes=True)
 # Attack Shark's second platform, the MOUSE HUB web driver (controlhub.top), see compx.py. Model number
 # 20 in that hub's config, PAW3955. Nobody has tried it here
 HUB_CABLES = (0xF516, 0xF5F6, 0xF50E)          # next to F515, see compx.CABLE_PIDS

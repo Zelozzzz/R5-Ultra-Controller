@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A copy that's on a pre-release gets told about the next pre-release. Before, the update check only asked GitHub for
+  the release everyone gets, so a 1.10 copy was told it was the newest and a 1.11 one would never hear about 1.12.
+  A copy on the normal release still only hears about the next normal one.
+- The IPI Float 88 and the WLMOUSE Beast Miao glow through their holes on screen like the R5 does. Their pictures paint
+  the holes black instead of see-through, so Dorsal took them for solid shells and lit nothing; now the pure black cells
+  inside the shell count as the holes for those two (the Float 88 is the R5's shell). IPI doesn't publish the Float
+  88's firmware, so there's no LED patch for it.
+
 ## 1.11
 
 - Every mouse but the R5 is flashed with the bytes its maker's own tool sends: LAMZU's web hub for the six

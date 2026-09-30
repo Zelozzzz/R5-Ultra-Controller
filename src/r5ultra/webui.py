@@ -98,13 +98,14 @@ class Site:
             if photo is None:
                 self._mouse = None
                 return None
-            spot = device_image.current.led_spot
-            digest = hashlib.sha1(photo.tobytes() + repr(spot).encode()).hexdigest()[:8]
+            spot, dark = device_image.current.led_spot, device_image.current.dark_holes
+            # the flag only goes into the name when it's set, so every other mouse keeps its rendered files
+            digest = hashlib.sha1(photo.tobytes() + repr(spot).encode() + (b"dark" if dark else b"")).hexdigest()[:8]
             stamp = f"{ASSET_VERSION}-{photo.size[0]}x{photo.size[1]}-{digest}"
             meta = self.root / f"mouse-{stamp}.json"
             if not meta.exists():
                 from .scenery import mouse_layers
-                layers = mouse_layers(photo, *MOUSE_SIZE, led_spot=spot)
+                layers = mouse_layers(photo, *MOUSE_SIZE, led_spot=spot, dark_holes=dark)
                 for part in ("base", "glow", "core"):
                     layers[part].save(self.root / f"mouse-{stamp}-{part}.png", optimize=True)
                 meta.write_text(json.dumps({"box": layers["box"]}))
