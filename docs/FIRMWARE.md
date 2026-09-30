@@ -299,10 +299,10 @@ are of what the vendors' code makes, not of what Dorsal makes).
 The order and the pauses come from the app's copy of the code, which has the calls (the hub's saved script doesn't).
 It enters the bootloader (`enterBL(0)`) and waits half a second, asks for the bootloader's version up to 50 times, every
 half second, until it looks like one, waits a second, then 50 ms twice, erases, programs, waits 50 ms twice, verifies
-every block, waits 50 ms, exits, waits a second and waits for the mouse to come back. If the version never looks like a
-bootloader's it stops there, before erasing anything. The vendors' way in Dorsal does the same in the same order: 50 tries
-half a second apart, and if the bootloader never answers like one it stops before anything is erased ("answers like one" isn't
-the same test, the app wants a B in the version, Dorsal wants its own command byte, B0, echoed back), and the same pauses after
+every block, waits 50 ms, exits, waits a second and waits for the mouse to come back, and if the version never looks like
+a bootloader's it gives up before erasing anything. The vendors' way in Dorsal does the same in the same order: 50 tries half
+a second apart, stopping before anything is erased if the bootloader never answers like one ("answers like one" isn't the
+same test, the app wants a B in the version, Dorsal wants its own command byte, B0, echoed back), and the same pauses after
 the version, before verifying and before the exit. It still differs in two places: after the erase Dorsal waits 1.5 seconds
 where the app asks for a status until the bootloader says it's ready, and Dorsal pauses 5 ms every 4 KB where the app pauses
 1 ms. Longer pauses shouldn't hurt. The R5's way takes none of the extra pauses and asks for the version 8 times, 0.1 s apart,
