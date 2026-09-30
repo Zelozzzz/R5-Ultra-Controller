@@ -201,6 +201,15 @@ def test_a_flash_is_read_back_and_compared(bench, flow):
 
 
 @both_ways
+def test_after_a_flash_the_chip_holds_exactly_the_image(bench, flow):
+    hid, image = bench(model=flow, size=0x105)                    # the last block isn't a full one
+    assert flasher.flash(image, log=lambda _m: None, readback=True) is True
+    start, end = image.minaddr(), image.maxaddr()
+    assert [hid.flash.get(a) for a in range(start, end + 1)] == [image[a] for a in range(start, end + 1)]    # every byte
+    assert all(b == 0xFF for a, b in hid.flash.items() if not start <= a <= end)       # nothing else, but FF padding
+
+
+@both_ways
 def test_a_bigger_image_gets_its_pause_every_4_kb(bench, monkeypatch, flow):
     hid, image = bench(model=flow, size=0x10000)                  # 64 KB, 2048 packets
     sleeps = []
