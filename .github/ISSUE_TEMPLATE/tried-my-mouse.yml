@@ -1,0 +1,54 @@
+name: I tried Dorsal on my mouse
+description: How it went, good or bad. Only the R5 Ultra has been tried on a real mouse so far.
+title: "My mouse: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only the R5 Ultra has been tried on a real mouse. Everything else ran on a virtual mouse, so what happens on
+        yours is the part I can't see. A "it worked" is as useful as a "it didn't".
+  - type: input
+    id: mouse
+    attributes:
+      label: Which mouse?
+      placeholder: LAMZU Tachi, Attack Shark M5 Ultra, ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Dorsal version and the mouse's firmware version
+      description: Settings > About has the first one, Diagnostics the second.
+  - type: dropdown
+    id: did
+    attributes:
+      label: What did you do?
+      options:
+        - Used the settings (DPI, polling rate, buttons, ...)
+        - Installed the LED firmware
+        - Put the original firmware back
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: How did it go?
+      options:
+        - It worked
+        - It mostly worked
+        - It didn't work
+        - The mouse stopped working
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw and what you expected. If the installer stopped, the last message it showed.
+  - type: textarea
+    id: log
+    attributes:
+      label: Settings > Log
+      description: Paste it if something went wrong. Have a look first, file paths in it can have your Windows user name in them.
+      render: text
