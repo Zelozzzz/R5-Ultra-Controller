@@ -1,8 +1,7 @@
-# Dorsal 1.11 (pre-release)
+# Dorsal 1.12
 
-**This is a pre-release.** It's out early so it can be tried before everyone gets it. The download button on the front
-page and Dorsal's own update check still point at 1.9 until it's promoted, so get `Dorsal-Setup.exe` from the files at
-the bottom of this page. (1.10 was a pre-release too and nobody downloaded it, so everything since 1.9 is in here.)
+The first full release since 1.9 (1.10 and 1.11 went out as pre-releases), so if you're on 1.9 all of this is new.
+The repo moved to `github.com/Zelozzzz/dorsal`; old links forward there. Your settings are kept when you update.
 
 Dorsal isn't just for the R5 Ultra anymore, and the firmware installer double-checks its work.
 
@@ -11,13 +10,13 @@ Dorsal isn't just for the R5 Ultra anymore, and the firmware installer double-ch
 - The rest of Attack Shark's Mouse Hub mice too (V8, X8 Ultra, V5, R11 Ultra and so on). Their hub has no names for
   them, only numbers, so Dorsal asks the mouse its number and calls it "Mouse Hub model 12" until someone says which
   mouse that is. One only shows up in the picker once it's plugged in.
-- About 40 more from LAMZU, WLMOUSE, RAWM, UNIUS and CRDRAKO, with the limits from their own apps.
+- About 40 more from LAMZU, WLMOUSE, RAWM, UNIUS and CRDRAKO, and the IPI Float 88, with the limits from their own apps.
 - Dorsal asks which mouse you have the first time it opens (Settings > Mouse > Change mouse to switch) and notices when
   you plug in a different one. A mouse nobody has tried is only written to once you say it's yours.
 - Only your mouse's real photo gets downloaded (from its brand's website), nothing else. You can turn that off in
   Settings > About.
-- The mouse on screen lights up like the real one: open shells glow through their holes, solid ones light their LED
-  dot, and printed designs stay dark.
+- The mouse on screen lights up like the real one: open shells glow through their holes (the Float 88 and the Beast Miao
+  too), solid ones light their LED dot, and printed designs stay dark.
 
 **LED that stays on, for more mice**
 - The M5 Ultra and R6 get the same one-byte firmware patch as the R5, and so do six LAMZU mice (Maya X, Tachi, Inca, Maya,
@@ -31,8 +30,8 @@ Dorsal isn't just for the R5 Ultra anymore, and the firmware installer double-ch
 
 **Read this first:** only the R5 Ultra has been tried on a real mouse. Everything else ran on a virtual mouse that runs the
 real firmware, which is good but not the same thing. Flashing can brick a mouse and there's no official recovery tool.
-[docs/MICE.md](https://github.com/Zelozzzz/dorsal/blob/main/docs/MICE.md) lists what's been tried. If you try
-one of the others, there's an issue form for saying how it went.
+[docs/MICE.md](https://github.com/Zelozzzz/dorsal/blob/main/docs/MICE.md) lists what's been tried. If you try one of the
+others, there's an issue form for saying how it went.
 
 **Also**
 - Pick how many DPI stages the DPI button goes through (1 to 6). Dorsal reads which sensor is in the mouse, and with a
@@ -43,5 +42,5 @@ one of the others, there's an issue form for saying how it went.
   with the last run.
 - Dialogs, switches and the mouse picker work with the keyboard, and the picker's button is always on screen now. Text is
   a bit bigger, the glass panes are less see-through, and the big numbers use a font that ships with Windows.
-
-Your settings are kept when you update.
+- A copy that's on a pre-release gets told about the next pre-release; a copy on a normal release only hears about the
+  next normal one.

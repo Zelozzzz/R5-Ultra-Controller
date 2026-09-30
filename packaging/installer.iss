@@ -1,11 +1,11 @@
 ; Inno Setup script for Dorsal's installer.
 ; Build dist\Dorsal first (python packaging\build.py), then:
-;     iscc /DAppVersion=1.11 packaging\installer.iss
+;     iscc /DAppVersion=1.12 packaging\installer.iss
 ; GitHub Actions does this on every release tag.
 
 #define AppName "Dorsal"
 #ifndef AppVersion
-  #define AppVersion "1.11"
+  #define AppVersion "1.12"
 #endif
 #ifndef BuildDist
   #define BuildDist "..\dist"

@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.12
 
+- The first full release since 1.9 (1.10 and 1.11 were pre-releases), so everything below it is new to most people.
 - The repo is `Zelozzzz/dorsal` now, and the Python package inside is `dorsal` (it was `r5ultra`, from when this was
   an R5 Ultra tool). Old links to the repo keep working, GitHub forwards them. Nothing changes for settings: the R5's
   key in them is still `r5ultra`.

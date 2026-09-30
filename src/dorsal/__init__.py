@@ -1,6 +1,6 @@
 """Dorsal: a control app for Attack Shark, LAMZU and other mice, with LED firmware for some of them."""
 
-__version__ = "1.11"
+__version__ = "1.12"
 
 APP_NAME = "Dorsal"
 APP_TAGLINE = "Improved firmware. Lightweight control. Attack Shark, LAMZU and more."
