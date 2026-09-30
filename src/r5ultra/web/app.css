@@ -5,7 +5,9 @@
 :root, .theme-ember {
   color-scheme: dark;
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --light: "Segoe UI Variable Display Light", "Segoe UI Light", "Segoe UI", sans-serif;
+  /* the big numbers and the wordmark. Bahnschrift is the DIN-style font that comes with Windows, so nothing
+     to download, and its digits are all the same width */
+  --light: Bahnschrift, "Segoe UI Variable Display Light", "Segoe UI Light", "Segoe UI", sans-serif;
   --mono: "Cascadia Mono", Consolas, monospace;
   --ease: cubic-bezier(.22, 1, .36, 1);
   --ok: #3ccf7a; --warn: #e9c46a; --err: #ef5350;
@@ -53,6 +55,10 @@ button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [hidden] { display: none !important; }
 :where(button, input, select, summary, [tabindex]):focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+/* no heading or sentence ends with one word alone on its last line. the -style longhand only changes where
+   lines break, so anything set to nowrap (the "..." labels) stays on one line */
+h1, h2, h3 { text-wrap-style: balance; }
+p, small, .sub, .note { text-wrap-style: pretty; }
 
 /* backdrop: the theme's picture with the moving layer over it, showing through the panels */
 #backdrop {
@@ -459,6 +465,7 @@ input.hue::-webkit-slider-thumb { margin-top: -.2rem; }
 .ring-btn, .stepper-wrap > span, .notched .notch span { text-shadow: 0 0 .3rem rgba(0, 0, 0, .7), 0 0 .7rem rgba(0, 0, 0, .5); }
 /* a small press for buttons, after the hovers so it wins */
 .btn:active:not(:disabled), .stepper button:active:not(:disabled), .ring-btn:active:not(:disabled) .ring { transform: scale(.96); }
+.mouse-card:active, .mouse-mini:active { transform: scale(.98); }
 
 /* the mouse photo and its light, always at the photo's real proportions */
 .art-body { display: flex; flex-direction: column; padding: .8rem; overflow: hidden; }
@@ -695,7 +702,7 @@ label.srow { cursor: pointer; }
 .mouse-pick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .8rem; margin: 1.1rem 0 .2rem; }
 .mouse-card { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: 1rem .6rem .85rem;
   border: 0; border-radius: var(--r); background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px var(--line);
-  color: var(--text); font: inherit; cursor: pointer; transition: background .15s, box-shadow .15s; }
+  color: var(--text); font: inherit; cursor: pointer; transition: background .15s, box-shadow .15s, transform .12s var(--ease); }
 .mouse-card:hover { background: rgba(255, 255, 255, .08); }
 .mouse-card.on { background: rgba(var(--accent-rgb), .08); box-shadow: inset 0 0 0 2px var(--accent); }
 /* focus on the picked card goes on top of its ring, not a second ring around it */
@@ -705,13 +712,13 @@ label.srow { cursor: pointer; }
 @media (max-width: 44rem) { .mouse-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .modal .mouse-others-head { margin: 1.4rem 0 .3rem; font-size: 1rem; font-weight: 600; }
 .modal .mouse-others-head + .sub { margin: 0 0 .6rem; font-size: .88rem; color: var(--muted); }
-.mouse-others { max-height: 15rem; overflow: auto; padding-right: .4rem; }
+.mouse-others { max-height: 17rem; overflow: auto; padding-right: .4rem; }
 .mouse-brand { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: .8rem; padding: .55rem 0; border-top: 1px solid var(--line); }
 .mouse-brand > b { padding-top: .35rem; font-size: .85rem; font-weight: 600; color: var(--text-2); }
 .mouse-minis { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr)); gap: .5rem; }
 .mouse-mini { display: flex; flex-direction: column; align-items: center; gap: .35rem; padding: .6rem .35rem .5rem;
   border: 0; border-radius: .45rem; background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px var(--line);
-  color: var(--text); font: inherit; cursor: pointer; transition: background .15s, box-shadow .15s; }
+  color: var(--text); font: inherit; cursor: pointer; transition: background .15s, box-shadow .15s, transform .12s var(--ease); }
 .mouse-mini:hover { background: rgba(255, 255, 255, .08); }
 .mouse-mini.on { background: rgba(var(--accent-rgb), .1); box-shadow: inset 0 0 0 2px var(--accent); }
 .mouse-mini.on:focus-visible { outline-offset: -2px; }
@@ -721,12 +728,19 @@ label.srow { cursor: pointer; }
 .mouse-mini.text { justify-content: center; min-height: 3rem; padding: .6rem .5rem; }
 .mouse-mini b { font-size: .8rem; font-weight: 600; text-align: center; line-height: 1.25; }
 .mouse-mini .badge { font-size: .7rem; }
-.mouse-others { max-height: 17rem; }
 @keyframes rise { from { opacity: 0; transform: translate(-50%, -47%); } }
 .modal h2 { margin: 0 0 .5rem; font-size: 1.3rem; font-weight: 600; }
 .modal p { color: var(--text-2); line-height: 1.5; margin: 0 0 1rem; }
 .modal .buttons { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.4rem; }
 .modal .input { width: 100%; }
+/* the mouse picker is a column where only the other brands' list scrolls, and it gets whatever room is left.
+   before, the whole window scrolled and "Use the ..." ended up below its bottom edge, even at 1440x900 */
+.modal[data-kind="mouse"] { display: flex; flex-direction: column; max-height: calc(100vh - 3rem); }
+.modal[data-kind="mouse"] > * { flex: none; }
+.modal[data-kind="mouse"] .mouse-pick { margin: .1rem 0 0; }    /* flex doesn't merge margins, so these are set by hand */
+.modal[data-kind="mouse"] .mouse-others { flex: 0 1 auto; min-height: 6rem; max-height: none; }
+.modal[data-kind="mouse"] #pick-note { margin: .8rem 0 0; }
+.modal[data-kind="mouse"] #pick-note:empty { display: none; }
 .steps4 { display: grid; gap: 1rem; margin: 1.2rem 0; }
 .step4 { display: grid; grid-template-columns: 2rem 1fr; gap: .9rem; }
 .step4 .badge { width: 2rem; height: 2rem; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: .85rem;
