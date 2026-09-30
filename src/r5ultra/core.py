@@ -227,7 +227,7 @@ class Controller:
 
         def work():
             try:
-                return updates.latest()
+                return updates.check()
             except Exception as exc:
                 self.log(f"Update check: {exc}")
                 return None

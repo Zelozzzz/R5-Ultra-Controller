@@ -47,6 +47,17 @@ Don't want an installer? Grab the portable zip from [Releases](https://github.co
 
 Settings are saved in `%APPDATA%\Dorsal`. Uninstall from Windows Settings > Apps.
 
+### trying a pre-release
+
+New versions go out as a pre-release first, so they can be tried before the update check offers them to everyone.
+The download button above stays on the last full release. To try one, open [Releases](https://github.com/Zelozzzz/R5-Ultra-Controller/releases),
+take the newest one marked pre-release and get `Dorsal-Setup.exe` from its files. It installs over what you have and keeps
+your settings, and a copy that's on a pre-release gets told about the next one.
+
+If you try Dorsal on a mouse that isn't an R5 Ultra, say how it went with the
+["I tried my mouse" issue form](https://github.com/Zelozzzz/R5-Ultra-Controller/issues/new/choose). It asks for the few
+things that matter, and it's the only way the other mice get marked as tried.
+
 ## screenshots
 
 | | |

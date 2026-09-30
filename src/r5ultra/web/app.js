@@ -1078,8 +1078,8 @@ function renderSettings() {
   const up = S.update || {};
   $("#update-text").textContent = {
     checking: "Checking GitHub…",
-    latest: "You have the newest version.",
-    available: `Dorsal ${up.version} is out.`,
+    latest: up.ahead ? "You're on a pre-release, newer than the one everyone gets." : "You have the newest version.",
+    available: `Dorsal ${up.version}${up.prerelease ? " (a pre-release)" : ""} is out.`,
     error: "Couldn't reach GitHub. Try again later.",
   }[up.state] || "Not checked yet.";
   $("#update-text").className = up.state === "available" ? "c-ok" : "";
