@@ -169,6 +169,8 @@ class FakeHid:
                 return len(data)
 
             def read(self, n, timeout_ms=0):
+                # like the real hidapi: 0 means block until something comes in, which hung on Haruka's PC
+                assert timeout_ms > 0, "read with timeout 0 blocks forever on a real device"
                 return list(hid.mouse.out.pop(0)) if hid.mouse.out else []
 
             def close(self):

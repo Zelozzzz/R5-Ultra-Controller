@@ -60,7 +60,8 @@ class Bootloader:
         self.log = log
 
     def ask(self, packet, timeout=1000):
-        while self.dev.read(64, 0):   # throw away anything old
+        # throw away anything old. not 0, in hidapi a timeout of 0 means wait forever (thanks Haruka)
+        while self.dev.read(64, 1):
             pass
         self.dev.write(b"\x00" + packet.ljust(64, b"\x00"))
         return bytes(self.dev.read(64, timeout))
